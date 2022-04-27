@@ -10,7 +10,7 @@ import (
 func Start() {
 	fmt.Println("Starting the server...")
 
-	listen, err := net.Listen("tcp", ":50000")
+	listen, err := net.Listen("tcp", "127.0.0.1:50000")
 	defer listen.Close()
 
 	if err != nil {
