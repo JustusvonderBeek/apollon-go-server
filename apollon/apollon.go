@@ -1,6 +1,7 @@
 package apollon
 
 import (
+	"Loxias/packets"
 	"bufio"
 	"encoding/binary"
 	"log"
@@ -30,7 +31,8 @@ func HandleClient(connection net.Conn) {
 
 		size := binary.BigEndian.Uint16(sizeBuf)
 
-		contentBuf := make([]byte, size)
+		// ADAPT SIZE INFORMATION IF SIZE FIELD CHANGES
+		contentBuf := make([]byte, size-2)
 		read, err = reader.Read(contentBuf)
 
 		if err != nil {
@@ -42,5 +44,38 @@ func HandleClient(connection net.Conn) {
 			continue
 		}
 
+		cat, typ, err := packets.PacketType(contentBuf)
+
+		if err != nil {
+			log.Printf("Got unknown packet type!")
+			return
+		}
+
+		switch cat {
+		case packets.CAT_CONTACT:
+			log.Println("Category: contact")
+			switch typ {
+			case packets.CON_CREATE:
+				log.Println("Type: Create")
+			case packets.CON_SEARCH:
+				log.Println("Type: Search")
+			case packets.CON_CONTACTS:
+				log.Println("Type: Contacts")
+			case packets.CON_OPTION:
+				log.Println("Type: Option")
+			}
+		case packets.CAT_DATA:
+			log.Println("Category: data")
+
+		}
+
+		// text, err := packets.DeseralizePacket[pType](contentBuf)
+
+		if err != nil {
+			log.Println("Could not parse packet! Closing connection to client!")
+			return
+		}
+
+		// log.Printf("Found text: \"%s\"", text.Message)
 	}
 }
