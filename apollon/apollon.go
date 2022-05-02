@@ -31,6 +31,8 @@ func HandleClient(connection net.Conn) {
 
 		size := binary.BigEndian.Uint16(sizeBuf)
 
+		log.Printf("Expecting %d bytes of data", size)
+
 		// ADAPT SIZE INFORMATION IF SIZE FIELD CHANGES
 		contentBuf := make([]byte, size-2)
 		read, err = reader.Read(contentBuf)
@@ -44,38 +46,42 @@ func HandleClient(connection net.Conn) {
 			continue
 		}
 
-		cat, typ, err := packets.PacketType(contentBuf)
+		category, typ, err := packets.PacketType(contentBuf)
+		// packet, err := packets.DeseralizePacket(contentBuf)
 
 		if err != nil {
-			log.Printf("Got unknown packet type!")
+			log.Printf("Got unknown packet type! %s", err.Error())
 			return
 		}
 
-		switch cat {
+		switch category {
 		case packets.CAT_CONTACT:
-			log.Println("Category: contact")
 			switch typ {
 			case packets.CON_CREATE:
-				log.Println("Type: Create")
+				// var packet packets.Create
+				// packet, err = packets.DeseralizePacket[packets.Create](contentBuf)
 			case packets.CON_SEARCH:
-				log.Println("Type: Search")
+				// packet, err = packets.DeseralizePacket[packets.Search](contentBuf)
 			case packets.CON_CONTACTS:
-				log.Println("Type: Contacts")
+				// packet, err = packets.DeseralizePacket[packets.ContactList](contentBuf)
 			case packets.CON_OPTION:
-				log.Println("Type: Option")
+				// packet, err = packets.DeseralizePacket[packets.ContactOption](contentBuf)
 			}
 		case packets.CAT_DATA:
-			log.Println("Category: data")
-
+			switch typ {
+			case packets.D_TEXT:
+				var packet packets.Text
+				packet, err = packets.DeseralizePacket[packets.Text](contentBuf)
+				log.Printf("Got %s", packet.Message)
+			case packets.D_TEXT_ACK:
+				// packet, err = packets.DeseralizePacket[packets.TextAck](contentBuf)
+			}
 		}
-
-		// text, err := packets.DeseralizePacket[pType](contentBuf)
 
 		if err != nil {
 			log.Println("Could not parse packet! Closing connection to client!")
 			return
 		}
 
-		// log.Printf("Found text: \"%s\"", text.Message)
 	}
 }
