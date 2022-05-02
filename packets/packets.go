@@ -2,20 +2,21 @@ package packets
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"time"
 )
 
+const NONE = 0
+
 // Categories
 const (
-	CAT_NONE    = 0
 	CAT_CONTACT = 1
 	CAT_DATA    = 2
 )
 
 // Contact types
 const (
-	CON_NONE     = 0
 	CON_CREATE   = 1
 	CON_SEARCH   = 2
 	CON_CONTACTS = 3
@@ -24,7 +25,6 @@ const (
 
 // Data types
 const (
-	D_NONE     = 0
 	D_TEXT     = 1
 	D_TEXT_ACK = 2
 )
@@ -97,41 +97,79 @@ type TextAck struct {
 	AckPart       uint16
 }
 
-func PacketType(packet []byte) (uint, uint, error) {
+func PacketType(packet []byte) (int, int, error) {
 	valid := json.Valid(packet)
-	if valid != true {
-		log.Println("The received packet does not contain a valid JSON format")
-		// TODO: Create error
-		return CAT_NONE, CON_NONE, nil
+	if !valid {
+		log.Print("Incorrect JSON")
+		return NONE, NONE, errors.New("invalid JSON")
 	}
 
-	var parsed Text
+	var parsed map[string]interface{}
 	err := json.Unmarshal(packet, &parsed)
 	if err != nil {
-		log.Println("Failed to parse packet!")
-		return CAT_NONE, CON_NONE, nil
+		log.Printf("Failed to parse packet: %s", err.Error())
+		return NONE, NONE, errors.New("failed to parse JSON")
 	}
-	c := uint(parsed.Category)
-	t := uint(parsed.Type)
-	return c, t, nil
+
+	cat := parsed["Category"].(float64)
+	category := int(cat)
+	t := parsed["Type"].(float64)
+	typ := int(t)
+
+	switch category {
+	case CAT_CONTACT:
+		log.Print("Contact")
+		switch typ {
+		case CON_CREATE:
+			log.Print("Create")
+			return CAT_CONTACT, CON_CREATE, nil
+		case CON_SEARCH:
+			log.Print("Search")
+			return CAT_CONTACT, CON_SEARCH, nil
+		case CON_CONTACTS:
+			log.Print("Contacts")
+			return CAT_CONTACT, CON_CONTACTS, nil
+		case CON_OPTION:
+			log.Print("Option")
+			return CAT_CONTACT, CON_OPTION, nil
+		default:
+			log.Printf("Unknown type %d", typ)
+			return NONE, NONE, errors.New("unknown type")
+		}
+	case CAT_DATA:
+		log.Print("Data")
+		switch typ {
+		case D_TEXT:
+			log.Print("Text")
+			return CAT_DATA, D_TEXT, nil
+		case D_TEXT_ACK:
+			log.Print("Text Ack")
+			return CAT_DATA, D_TEXT_ACK, nil
+		default:
+			log.Printf("Unknown type %d", typ)
+			return NONE, NONE, errors.New("unknown type")
+		}
+	default:
+		log.Print("Unknown category")
+		return NONE, NONE, errors.New("unknown category")
+	}
 }
 
-func DeseralizePacket[V Packet](packet []byte) (V, error) {
+func DeseralizePacket[T Packet](packet []byte) (T, error) {
 	log.Printf("Got packet:\n%s", string(packet))
 	// log.Printf("Got packet:\n%s\n%02x", string(packet), packet)
 
 	valid := json.Valid(packet)
-	if valid != true {
+	if !valid {
 		log.Printf("The received packet is not valid JSON!")
-		// TODO: create new error
-		// return V, nil
+		return *new(T), errors.New("invalid JSON")
 	}
 
-	var parsed V
+	var parsed T
 	err := json.Unmarshal(packet, &parsed)
 	if err != nil {
 		log.Printf("Failed to parse text: %s", err.Error())
-		// return nil, err
+		return *new(T), errors.New("failed to parse JSON")
 	}
 
 	return parsed, nil
