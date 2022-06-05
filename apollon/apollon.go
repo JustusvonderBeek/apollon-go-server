@@ -1,42 +1,38 @@
 package apollon
 
 import (
+	"Loxias/database"
 	"Loxias/packets"
+	"apollontypes"
 	"bufio"
 	"encoding/binary"
+	"encoding/json"
+	"errors"
 	"log"
 	"math/rand"
 	"net"
 	"time"
 )
 
-type User struct {
-	Username   string
-	UserId     uint32
-	connection net.Conn
-}
-
-var database = make(map[uint32]User)
-
-func StoreInDatabase(user packets.Create, connection net.Conn) {
-	log.Println("Storing user in database")
-
-	newUser := User{
-		Username:   user.Username,
-		UserId:     user.UserId,
-		connection: connection,
+func CreatePacket(content any) ([]byte, error) {
+	packet, err := json.Marshal(content)
+	if err != nil {
+		return nil, err
 	}
-
-	_, exists := database[user.UserId]
-
-	if exists {
-		log.Printf("User with ID %d already exists", user.UserId)
-		return
+	if len(packet) > 65536 {
+		log.Println("Packet longer than 16 kB are not supported")
+		return nil, errors.New("Packet too long")
 	}
-
-	database[user.UserId] = newUser
-
-	log.Printf("Stored user %s with id %d", user.Username, user.UserId)
+	size := uint16(len(packet))
+	buffer := make([]byte, size+2)
+	binary.BigEndian.PutUint16(buffer, size)
+	copied := copy(buffer[2:], packet)
+	if copied < len(packet) {
+		log.Printf("Something went wrong during packet creation! Should copy %d, but copied only %d", size, copied)
+		return nil, errors.New("Failed to copy all data")
+	}
+	log.Printf("Packet: %02x", buffer)
+	return buffer, nil
 }
 
 func HandleClient(connection net.Conn) {
@@ -97,7 +93,7 @@ func HandleClient(connection net.Conn) {
 				// Generate new user id
 				newUserId := rand.Uint32()
 				for {
-					_, exists := database[newUserId]
+					exists := database.IdExists(newUserId)
 					if !exists {
 						break
 					}
@@ -105,13 +101,49 @@ func HandleClient(connection net.Conn) {
 				}
 				create.UserId = newUserId
 				// Store new user in some sort of database
-				StoreInDatabase(create, connection)
+				database.StoreInDatabase(create, connection)
+				// Sending back the ID to the client
+				create.UserId = newUserId
+				var encoded []byte
+				encoded, err = json.Marshal(create)
+				if err != nil {
+					log.Printf("Failed to encoded json! %s", err)
+					return
+				}
+				connection.Write(encoded)
 			case packets.CON_SEARCH:
-				// packet, err = packets.DeseralizePacket[packets.Search](contentBuf)
+				var search packets.Search
+				search, err = packets.DeseralizePacket[packets.Search](contentBuf)
+				users := database.SearchUsers(search.UserIdentifier)
+				if len(users) == 0 {
+					log.Printf("No users for identifier \"%s\" found", search.UserIdentifier)
+				}
+				contactList := packets.ContactList{
+					Category:  packets.CAT_CONTACT,
+					Type:      packets.CON_CONTACTS,
+					UserId:    search.UserId,
+					MessageId: search.MessageId + 1,
+					Contacts:  users,
+				}
+				var packet []byte
+				packet, err = json.Marshal(contactList)
+				if err != nil {
+					log.Printf("Failed to encode json! %s", err)
+				}
+				connection.Write(packet)
 			case packets.CON_CONTACTS:
 				// packet, err = packets.DeseralizePacket[packets.ContactList](contentBuf)
+				log.Println("Received contact list! Should not be received on the server side! Closing connection!")
+				return
 			case packets.CON_OPTION:
-				// packet, err = packets.DeseralizePacket[packets.ContactOption](contentBuf)
+				var option packets.ContactOption
+				option, err = packets.DeseralizePacket[packets.ContactOption](contentBuf)
+				if err != nil {
+					log.Println("Failed to deserialize packet!")
+					return
+				}
+				log.Println("Received contact option")
+				HandleContactOption(option)
 			default:
 				log.Printf("Incorrect packet type: %d", typ)
 				return
@@ -119,11 +151,37 @@ func HandleClient(connection net.Conn) {
 		case packets.CAT_DATA:
 			switch typ {
 			case packets.D_TEXT:
-				var packet packets.Text
-				packet, err = packets.DeseralizePacket[packets.Text](contentBuf)
-				log.Printf("Got %s", packet.Message)
+				var text packets.Text
+				text, err = packets.DeseralizePacket[packets.Text](contentBuf)
+				log.Printf("Got \"%s\" forwarding to \"%d\"", text.Message, text.ContactUserId)
+				var user apollontypes.User
+				user, err = database.GetUser(text.ContactUserId)
+				if err != nil {
+					log.Printf("%s! Closing connection...", err)
+					// return
+				}
+				forward, err := CreatePacket(contentBuf)
+				user.Connection.Write(forward)
+				textAck := packets.TextAck{
+					Category:      packets.CAT_DATA,
+					Type:          packets.D_TEXT_ACK,
+					UserId:        text.UserId,
+					MessageId:     text.UserId,
+					ContactUserId: text.ContactUserId,
+					Timestamp:     text.Timestamp,
+					AckPart:       text.Part,
+				}
+				var ack []byte
+				ack, err = json.Marshal(textAck)
+				if err != nil {
+					log.Printf("Failed to serialize json! %s", err)
+					return
+				}
+				connection.Write(ack)
 			case packets.D_TEXT_ACK:
 				// packet, err = packets.DeseralizePacket[packets.TextAck](contentBuf)
+				log.Println("Received text ack! Should never be received on the server side! Closing connection...")
+				return
 			default:
 				log.Printf("Incorrect packet type %d", typ)
 			}
@@ -136,5 +194,20 @@ func HandleClient(connection net.Conn) {
 			return
 		}
 
+	}
+}
+
+func HandleContactOption(option packets.ContactOption) {
+	for _, v := range option.Options {
+		log.Printf("Option: {%s, %s}", v.Type, v.Value)
+		switch v.Type {
+		case "Add":
+			break
+		case "Remove":
+			break
+		default:
+			log.Printf("Unknown contact option type \"%s\"", v.Type)
+			return
+		}
 	}
 }
