@@ -3,6 +3,7 @@ package database_test
 import (
 	"Loxias/apollontypes"
 	"Loxias/database"
+	"Loxias/packets"
 	"log"
 	"os"
 	"testing"
@@ -58,6 +59,45 @@ func TestInsertUser(t *testing.T) {
 		t.Fail()
 	}
 	database.PrintDatabase()
+	// Check for correct insertion with create function
+	client := packets.Create{
+		Category:  packets.CAT_CONTACT,
+		Type:      packets.CON_CREATE,
+		UserId:    1055,
+		MessageId: 100,
+		Username:  "fritz",
+	}
+	err = database.StoreInDatabase(client, nil)
+	if err != nil {
+		log.Printf("Failed to insert user in database!")
+		t.Fail()
+	}
+	client.Username = ""
+	err = database.StoreInDatabase(client, nil)
+	if err == nil {
+		log.Println("Inserted incorrect user!")
+		t.Fail()
+	}
+	client.Username = "fritz"
+	client.UserId = 0
+	err = database.StoreInDatabase(client, nil)
+	if err == nil {
+		log.Println("Inserted incorrect user!")
+		t.Fail()
+	}
+	client.UserId = 10
+	err = database.StoreInDatabase(client, nil)
+	if err == nil {
+		log.Println("Stored duplicate user")
+		t.Fail()
+	}
+	client.UserId = 9876
+	err = database.StoreInDatabase(client, nil)
+	if err != nil {
+		log.Println("Failed to store correct user!")
+		t.Fail()
+	}
+	database.PrintDatabase()
 }
 
 func TestStoringUser(t *testing.T) {
@@ -107,6 +147,55 @@ func TestLoadingDatabase(t *testing.T) {
 	}
 	if user.Username != "test2" {
 		log.Println("Existing user was stored incorrectly!")
+		t.Fail()
+	}
+}
+
+func TestSearchingUser(t *testing.T) {
+	log.Println("Testing search for users")
+	database.Clear()
+	user := apollontypes.User{
+		Username:   "test",
+		UserId:     1,
+		Connection: nil,
+	}
+	err := database.StoreUserInDatabase(user)
+	if err != nil {
+		log.Println("Failed to store user in database!")
+		t.Fail()
+	}
+	user.Username = "number2"
+	user.UserId = 2
+	err = database.StoreUserInDatabase(user)
+	if err != nil {
+		log.Println("Failed to store correct user in database")
+		t.Fail()
+	}
+	user.Username = "num"
+	user.UserId = 3
+	err = database.StoreUserInDatabase(user)
+	if err != nil {
+		log.Println("Failed to store correct user in database")
+		t.Fail()
+	}
+	contacts := database.SearchUsers("num")
+	if len(contacts) < 2 {
+		log.Println("Got incorrect amount of results back!")
+		t.Fail()
+	}
+	for _, v := range contacts {
+		if v.UserId < 2 || v.UserId > 3 {
+			log.Println("Found incorrect users!")
+			t.Fail()
+		}
+	}
+	contacts = database.SearchUsers("numb")
+	if len(contacts) != 1 {
+		log.Println("Got incorrect amount of results back!")
+		t.Fail()
+	}
+	if contacts[0].UserId != 2 {
+		log.Println("Got incorrect user back!")
 		t.Fail()
 	}
 }
