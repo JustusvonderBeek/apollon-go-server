@@ -4,4 +4,6 @@ use (
 	./packets
 	./server
 	./apollon
+	./database
+	./apollontypes
 )
