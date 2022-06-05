@@ -1,9 +1,9 @@
 package apollon
 
 import (
+	"Loxias/apollontypes"
 	"Loxias/database"
 	"Loxias/packets"
-	"apollontypes"
 	"bufio"
 	"encoding/binary"
 	"encoding/json"
@@ -101,7 +101,11 @@ func HandleClient(connection net.Conn) {
 				}
 				create.UserId = newUserId
 				// Store new user in some sort of database
-				database.StoreInDatabase(create, connection)
+				err = database.StoreInDatabase(create, connection)
+				if err != nil {
+					// Failed to insert user into database
+					return
+				}
 				// Sending back the ID to the client
 				create.UserId = newUserId
 				var encoded []byte
