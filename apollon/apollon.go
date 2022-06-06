@@ -19,19 +19,19 @@ func CreatePacket(content any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(packet) > 65536 {
+	if len(packet) > 65534 {
 		log.Println("Packet longer than 16 kB are not supported")
 		return nil, errors.New("Packet too long")
 	}
-	size := uint16(len(packet))
-	buffer := make([]byte, size+2)
+	size := uint16(len(packet) + 2)
+	buffer := make([]byte, size)
 	binary.BigEndian.PutUint16(buffer, size)
 	copied := copy(buffer[2:], packet)
 	if copied < len(packet) {
 		log.Printf("Something went wrong during packet creation! Should copy %d, but copied only %d", size, copied)
 		return nil, errors.New("Failed to copy all data")
 	}
-	log.Printf("Packet: %02x", buffer)
+	// log.Printf("Packet: %02x", buffer)
 	return buffer, nil
 }
 
@@ -77,6 +77,21 @@ func HandleClient(connection net.Conn) {
 
 		category, typ, err := packets.PacketType(contentBuf)
 		// packet, err := packets.DeseralizePacket(contentBuf)
+		var header packets.Header
+		err = json.Unmarshal(contentBuf, &header)
+		if err != nil {
+			log.Println("Failed to extract header information from packet")
+			return
+		} else {
+			user, err := database.GetUser(header.UserId)
+			if err != nil && user.UserId != 0 {
+				log.Println("User not in database!")
+				return
+			}
+			user.Connection = connection
+			err = database.StoreUserInDatabase(user)
+			log.Printf("User \"%d\" connected and online", user.UserId)
+		}
 
 		if err != nil {
 			log.Printf("Got unknown packet type! %s", err.Error())
@@ -106,13 +121,13 @@ func HandleClient(connection net.Conn) {
 					// Failed to insert user into database
 					return
 				}
+				database.SaveToFile("./database.json")
 				// Sending back the ID to the client
 				create.UserId = newUserId
-				var encoded []byte
-				encoded, err = json.Marshal(create)
+				encoded, err := CreatePacket(create)
 				if err != nil {
-					log.Printf("Failed to encoded json! %s", err)
-					return
+					log.Println("Failed to encode answer")
+					continue
 				}
 				connection.Write(encoded)
 			case packets.CON_SEARCH:
@@ -121,6 +136,7 @@ func HandleClient(connection net.Conn) {
 				users := database.SearchUsers(search.UserIdentifier)
 				if len(users) == 0 {
 					log.Printf("No users for identifier \"%s\" found", search.UserIdentifier)
+					// What to do in this case according to protocol?
 				}
 				contactList := packets.ContactList{
 					Category:  packets.CAT_CONTACT,
@@ -147,7 +163,10 @@ func HandleClient(connection net.Conn) {
 					return
 				}
 				log.Println("Received contact option")
-				HandleContactOption(option)
+				err = HandleContactOption(option, connection)
+				if err != nil {
+					return
+				}
 			default:
 				log.Printf("Incorrect packet type: %d", typ)
 				return
@@ -164,8 +183,17 @@ func HandleClient(connection net.Conn) {
 					log.Printf("%s! Closing connection...", err)
 					// return
 				}
-				forward, err := CreatePacket(contentBuf)
+				forward, err := CreatePacket(text)
+				if err != nil {
+					log.Printf("Failed to create forward packet!")
+					continue
+				}
+				if user.Connection == nil {
+					log.Printf("User %d currently not online", text.ContactUserId)
+					continue
+				}
 				user.Connection.Write(forward)
+				// Sending the ack! TODO: Normally this should only be send after the receiving side gives their OK
 				textAck := packets.TextAck{
 					Category:      packets.CAT_DATA,
 					Type:          packets.D_TEXT_ACK,
@@ -175,12 +203,7 @@ func HandleClient(connection net.Conn) {
 					Timestamp:     text.Timestamp,
 					AckPart:       text.Part,
 				}
-				var ack []byte
-				ack, err = json.Marshal(textAck)
-				if err != nil {
-					log.Printf("Failed to serialize json! %s", err)
-					return
-				}
+				ack, err := CreatePacket(textAck)
 				connection.Write(ack)
 			case packets.D_TEXT_ACK:
 				// packet, err = packets.DeseralizePacket[packets.TextAck](contentBuf)
@@ -201,17 +224,92 @@ func HandleClient(connection net.Conn) {
 	}
 }
 
-func HandleContactOption(option packets.ContactOption) {
+func HandleContactOption(option packets.ContactOption, connection net.Conn) error {
 	for _, v := range option.Options {
 		log.Printf("Option: {%s, %s}", v.Type, v.Value)
 		switch v.Type {
-		case "Add":
-			break
-		case "Remove":
+		case "Question":
+			switch v.Value {
+			case "Add":
+				log.Printf("User %d wants to add %d", option.UserId, option.ContactUserId)
+				_, err := database.GetUser(option.ContactUserId)
+				if err != nil {
+					log.Printf("%s", err)
+					break
+				}
+				// Forwarding the request to the other user
+				// if user.Connection == nil {
+				// 	log.Printf("User \"%d\" is currently not online!", option.ContactUserId)
+				// 	// TODO: Save the request and send it as soon as the other client comes online
+				// 	return nil
+				// }
+				// packet, err := CreatePacket(option)
+				// if err != nil {
+				// 	log.Println("Failed to create next packet!")
+				// 	return nil
+				// }
+				// connection.Write(packet)
+
+				// Because we currently don't have the request implemented on the other client we just send the accept answer back (for testing purposes)
+				answerOption := packets.Option{
+					Type:  "Answer",
+					Value: "Accept",
+				}
+				nameOption := packets.Option{
+					Type:  "Name",
+					Value: "username",
+				}
+				options := make([]packets.Option, 2)
+				options[0] = answerOption
+				options[1] = nameOption
+				accept := packets.ContactOption{
+					Category:      packets.CAT_CONTACT,
+					Type:          packets.CON_OPTION,
+					UserId:        option.ContactUserId,
+					MessageId:     option.MessageId,
+					ContactUserId: option.UserId,
+					Options:       options,
+				}
+				packet, err := CreatePacket(accept)
+				if err != nil {
+					log.Println("Failed to create answer packet!")
+					break
+				}
+				connection.Write(packet)
+				break
+			case "Remove":
+				// TODO: Implement the acknowledgement on the client side before sending out the ack.
+				// For testing purposes the ack is send so that the client is successfully removed
+				removeAck := packets.Option{
+					Type:  "Answer",
+					Value: "RemoveAck",
+				}
+				options := make([]packets.Option, 1)
+				options[0] = removeAck
+				ack := packets.ContactOption{
+					Category:      packets.CAT_CONTACT,
+					Type:          packets.CON_OPTION,
+					UserId:        option.ContactUserId,
+					MessageId:     option.MessageId,
+					ContactUserId: option.UserId,
+					Options:       options,
+				}
+				packet, err := CreatePacket(ack)
+				if err != nil {
+					log.Printf("Failed to create next packet")
+					break
+				}
+				connection.Write(packet)
+				break
+			default:
+				log.Printf("Unknown or incorrect contact option value \"%s\". Closing connection...", v.Value)
+				return errors.New("Unknown contact value")
+			}
 			break
 		default:
 			log.Printf("Unknown contact option type \"%s\"", v.Type)
-			return
+			return errors.New("Unknown contact type")
 		}
 	}
+	return nil
 }
