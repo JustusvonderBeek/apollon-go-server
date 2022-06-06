@@ -33,6 +33,13 @@ type Packet interface {
 	Create | Search | Contact | ContactList | ContactOption | Text | TextAck
 }
 
+type Header struct {
+	Category  byte
+	Type      byte
+	UserId    uint32
+	MessageId uint32
+}
+
 type Create struct {
 	Category  byte
 	Type      byte
