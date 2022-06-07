@@ -52,7 +52,7 @@ func HandleClient(connection net.Conn) {
 				log.Println("Connection closed by remote host")
 				return
 			}
-			log.Println("Failed to read information from client!")
+			log.Println("Failed to read size information from client!")
 			continue
 		}
 
@@ -61,6 +61,10 @@ func HandleClient(connection net.Conn) {
 		size := binary.BigEndian.Uint16(sizeBuf)
 
 		log.Printf("Expecting %d bytes of data", size)
+		if size <= 4 {
+			log.Println("Keep alive packet")
+			continue
+		}
 
 		// ADAPT SIZE INFORMATION IF SIZE FIELD CHANGES
 		contentBuf := make([]byte, size-2)
@@ -71,37 +75,33 @@ func HandleClient(connection net.Conn) {
 				log.Println("Connection closed by remote host")
 				return
 			}
-			log.Println("Failed to read information from the client!")
+			log.Println("Failed to read data from client!")
 			continue
 		}
 
-		category, typ, err := packets.PacketType(contentBuf)
-		// packet, err := packets.DeseralizePacket(contentBuf)
-		var header packets.Header
-		err = json.Unmarshal(contentBuf, &header)
+		// category, typ, err := packets.PacketType(contentBuf)
+		header, err := packets.DeseralizePacket[packets.Header](contentBuf)
 		if err != nil {
 			log.Println("Failed to extract header information from packet")
+			// TODO: Is this rather due to an transmission error or because the client send wrong information? This should NORMALLY only happen if the client is malicous and sends incorrect data as the first part of the packet -> return
 			return
 		} else {
 			user, err := database.GetUser(header.UserId)
+			// Add the newly connected user to the online users
+			// First check for not already added, second for registered user
 			if err != nil && user.UserId != 0 {
-				log.Println("User not in database!")
-				return
+				user.Connection = connection
+				err = database.StoreUserInDatabase(user)
+				log.Printf("User \"%d\" connected and online", user.UserId)
+			} else {
+				// Allows to switch the connection per packet
+				user.Connection = connection
 			}
-			user.Connection = connection
-			err = database.StoreUserInDatabase(user)
-			log.Printf("User \"%d\" connected and online", user.UserId)
 		}
 
-		if err != nil {
-			log.Printf("Got unknown packet type! %s", err.Error())
-			log.Printf("Closing client connection...")
-			return
-		}
-
-		switch category {
+		switch header.Category {
 		case packets.CAT_CONTACT:
-			switch typ {
+			switch header.Type {
 			case packets.CON_CREATE:
 				var create packets.Create
 				create, err = packets.DeseralizePacket[packets.Create](contentBuf)
@@ -137,22 +137,21 @@ func HandleClient(connection net.Conn) {
 				if len(users) == 0 {
 					log.Printf("No users for identifier \"%s\" found", search.UserIdentifier)
 					// What to do in this case according to protocol?
+					// I guess just send an empty list back
 				}
-				contactList := packets.ContactList{
-					Category:  packets.CAT_CONTACT,
-					Type:      packets.CON_CONTACTS,
-					UserId:    search.UserId,
-					MessageId: search.MessageId + 1,
-					Contacts:  users,
-				}
-				var packet []byte
-				packet, err = json.Marshal(contactList)
+				contactList, err := packets.CreateContactList(search, users)
 				if err != nil {
-					log.Printf("Failed to encode json! %s", err)
+					// Internal error, tried our best
+					continue
+				}
+				packet, err := CreatePacket(contactList)
+				if err != nil {
+					continue
 				}
 				connection.Write(packet)
 			case packets.CON_CONTACTS:
 				// packet, err = packets.DeseralizePacket[packets.ContactList](contentBuf)
+				// Should never be sent to the server
 				log.Println("Received contact list! Should not be received on the server side! Closing connection!")
 				return
 			case packets.CON_OPTION:
@@ -168,11 +167,11 @@ func HandleClient(connection net.Conn) {
 					return
 				}
 			default:
-				log.Printf("Incorrect packet type: %d", typ)
+				log.Printf("Incorrect packet type: %d", header.Type)
 				return
 			}
 		case packets.CAT_DATA:
-			switch typ {
+			switch header.Type {
 			case packets.D_TEXT:
 				var text packets.Text
 				text, err = packets.DeseralizePacket[packets.Text](contentBuf)
@@ -193,7 +192,7 @@ func HandleClient(connection net.Conn) {
 					continue
 				}
 				user.Connection.Write(forward)
-				// Sending the ack! TODO: Normally this should only be send after the receiving side gives their OK
+				// Sending the ack! TODO: Normally this should only be send after the receiving side gives their OK - therefore no method is implemented in the packet library
 				textAck := packets.TextAck{
 					Category:      packets.CAT_DATA,
 					Type:          packets.D_TEXT_ACK,
@@ -210,10 +209,10 @@ func HandleClient(connection net.Conn) {
 				log.Println("Received text ack! Should never be received on the server side! Closing connection...")
 				return
 			default:
-				log.Printf("Incorrect packet type %d", typ)
+				log.Printf("Incorrect packet type %d", header.Type)
 			}
 		default:
-			log.Printf("Incorrect packet category: %d", category)
+			log.Printf("Incorrect packet category: %d", header.Category)
 		}
 
 		if err != nil {
