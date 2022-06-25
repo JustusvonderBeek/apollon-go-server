@@ -75,33 +75,41 @@ func HandleClient(connection net.Conn) {
 			continue
 		}
 
-		category, typ, err := packets.PacketType(contentBuf)
+		// log.Printf("Raw: %x", contentBuf)
+		// log.Printf("Raw String: %s", string(contentBuf))
+
+		// category, typ, err := packets.PacketType(contentBuf)
 		// packet, err := packets.DeseralizePacket(contentBuf)
 		var header packets.Header
 		err = json.Unmarshal(contentBuf, &header)
 		if err != nil {
 			log.Println("Failed to extract header information from packet")
 			return
-		} else {
-			user, err := database.GetUser(header.UserId)
-			if err != nil && user.UserId != 0 {
-				log.Println("User not in database!")
+		}
+
+		user, err := database.GetUser(header.UserId)
+		if err != nil {
+			if header.UserId != 0 {
+				log.Printf("Err: %s", err)
 				return
 			}
+		} else {
+			// Allow other clients to send data to this one
 			user.Connection = connection
-			err = database.StoreUserInDatabase(user)
-			log.Printf("User \"%d\" connected and online", user.UserId)
+			_ = database.StoreUserInDatabase(user)
 		}
 
-		if err != nil {
-			log.Printf("Got unknown packet type! %s", err.Error())
-			log.Printf("Closing client connection...")
-			return
-		}
+		log.Printf("User \"%d\" connected and online", user.UserId)
 
-		switch category {
+		// if err != nil {
+		// 	log.Printf("Got unknown packet type! %s", err.Error())
+		// 	log.Printf("Closing client connection...")
+		// 	return
+		// }
+
+		switch header.Category {
 		case packets.CAT_CONTACT:
-			switch typ {
+			switch header.Type {
 			case packets.CON_CREATE:
 				var create packets.Create
 				create, err = packets.DeseralizePacket[packets.Create](contentBuf)
@@ -145,12 +153,14 @@ func HandleClient(connection net.Conn) {
 					MessageId: search.MessageId + 1,
 					Contacts:  users,
 				}
-				var packet []byte
-				packet, err = json.Marshal(contactList)
+
+				encoded, err := CreatePacket(contactList)
 				if err != nil {
-					log.Printf("Failed to encode json! %s", err)
+					log.Println("Failed to encode answer")
+					continue
 				}
-				connection.Write(packet)
+				log.Printf("Raw: %s", string(encoded))
+				connection.Write(encoded)
 			case packets.CON_CONTACTS:
 				// packet, err = packets.DeseralizePacket[packets.ContactList](contentBuf)
 				log.Println("Received contact list! Should not be received on the server side! Closing connection!")
@@ -168,11 +178,11 @@ func HandleClient(connection net.Conn) {
 					return
 				}
 			default:
-				log.Printf("Incorrect packet type: %d", typ)
+				log.Printf("Incorrect packet type: %d", header.Type)
 				return
 			}
 		case packets.CAT_DATA:
-			switch typ {
+			switch header.Type {
 			case packets.D_TEXT:
 				var text packets.Text
 				text, err = packets.DeseralizePacket[packets.Text](contentBuf)
@@ -181,7 +191,7 @@ func HandleClient(connection net.Conn) {
 				user, err = database.GetUser(text.ContactUserId)
 				if err != nil {
 					log.Printf("%s! Closing connection...", err)
-					// return
+					return
 				}
 				forward, err := CreatePacket(text)
 				if err != nil {
@@ -204,16 +214,22 @@ func HandleClient(connection net.Conn) {
 					AckPart:       text.Part,
 				}
 				ack, err := CreatePacket(textAck)
+				if err != nil {
+					log.Println("Failed to create ack packet")
+					continue
+				}
 				connection.Write(ack)
 			case packets.D_TEXT_ACK:
-				// packet, err = packets.DeseralizePacket[packets.TextAck](contentBuf)
-				log.Println("Received text ack! Should never be received on the server side! Closing connection...")
-				return
+				// textAck, err = packets.DeseralizePacket[packets.TextAck](contentBuf)
+				log.Println("Received text ack! Should never be received on the server side! Ignoring for debug purposes...")
+				// return
 			default:
-				log.Printf("Incorrect packet type %d", typ)
+				log.Printf("Incorrect packet type %d", header.Type)
+				return
 			}
 		default:
-			log.Printf("Incorrect packet category: %d", category)
+			log.Printf("Incorrect packet category: %d", header.Category)
+			return
 		}
 
 		if err != nil {
