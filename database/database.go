@@ -73,10 +73,10 @@ func StoreUserInDatabase(user apollontypes.User) error {
 	if err != nil {
 		return err
 	}
-	_, exists := database[user.UserId]
-	if exists {
+	ref, exists := database[user.UserId]
+	if exists && ref.Connection != nil {
 		log.Printf("User with ID %d already exists", user.UserId)
-		return errors.New("User already exists")
+		return errors.New("user already exists")
 	}
 	database[user.UserId] = user
 	log.Printf("Stored user \"%s\" with id \"%d\"", user.Username, user.UserId)
@@ -131,6 +131,7 @@ func ConvertToByte() ([]byte, error) {
 	seperator := ","
 	counter := 0
 	for _, v := range database {
+		v.Connection = nil
 		raw, err := json.Marshal(v)
 		if err != nil {
 			log.Printf("Failed to convert user %d to byte", v.UserId)
