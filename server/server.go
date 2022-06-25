@@ -2,6 +2,7 @@ package server
 
 import (
 	"Loxias/apollon"
+	"Loxias/database"
 	"fmt"
 	"log"
 	"net"
@@ -10,13 +11,15 @@ import (
 func Start() {
 	fmt.Println("Starting the server...")
 
-	listen, err := net.Listen("tcp", "127.0.0.1:50000")
-	defer listen.Close()
+	listen, err := net.Listen("tcp", "192.168.2.5:50000")
 
 	if err != nil {
 		// Already closes the program (if not handled)
 		log.Fatalf("Failed to connect to localhost: %s", err.Error())
 	}
+	defer listen.Close()
+
+	database.ReadFromFile("database.json")
 
 	for {
 		log.Println("Waiting for connecting client...")
