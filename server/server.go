@@ -2,6 +2,7 @@ package server
 
 import (
 	"Loxias/apollon"
+	"Loxias/apollontypes"
 	"Loxias/database"
 	"fmt"
 	"log"
@@ -20,6 +21,14 @@ func Start() {
 	defer listen.Close()
 
 	database.ReadFromFile("database.json")
+	dbWriteChannel := make(chan apollontypes.User)
+	go database.UpdateDatabase(dbWriteChannel)
+
+	// var db database.Database
+	// if err != nil {
+	// 	log.Printf("%s", err)
+	// 	return
+	// }
 
 	for {
 		log.Println("Waiting for connecting client...")
@@ -32,6 +41,6 @@ func Start() {
 
 		log.Println("Client accepted")
 		// This method is generic enough (only one param, the net.Conn) so that many different functionalites can be used and implemented with this simple code snippet
-		go apollon.HandleClient(conn)
+		go apollon.HandleClient(conn, dbWriteChannel)
 	}
 }
