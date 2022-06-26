@@ -35,12 +35,14 @@ func CreatePacket(content any) ([]byte, error) {
 	return buffer, nil
 }
 
-func HandleClient(connection net.Conn) {
+func HandleClient(connection net.Conn, write chan apollontypes.User) {
 	log.Println("Handling client...")
 
 	// Init the random number generator
 	rand.Seed(time.Now().UnixNano())
 	reader := bufio.NewReader(connection)
+	var id uint32
+	id = 0
 
 	for {
 
@@ -50,6 +52,7 @@ func HandleClient(connection net.Conn) {
 		if err != nil {
 			if read == 0 {
 				log.Println("Connection closed by remote host")
+				database.SetClientOffline(id)
 				return
 			}
 			log.Println("Failed to read information from client!")
@@ -86,20 +89,23 @@ func HandleClient(connection net.Conn) {
 			log.Println("Failed to extract header information from packet")
 			return
 		}
+		id = header.UserId
 
-		user, err := database.GetUser(header.UserId)
+		var user apollontypes.User
+		user, err = database.GetUser(id)
 		if err != nil {
-			if header.UserId != 0 {
+			if id != 0 {
 				log.Printf("Err: %s", err)
 				return
 			}
 		} else {
 			// Allow other clients to send data to this one
 			user.Connection = connection
-			_ = database.StoreUserInDatabase(user)
+			// _ = database.StoreUserInDatabase(user)
+			write <- user
 		}
 
-		log.Printf("User \"%d\" connected and online", user.UserId)
+		log.Printf("User \"%d\" connected and online", id)
 
 		// if err != nil {
 		// 	log.Printf("Got unknown packet type! %s", err.Error())
@@ -292,7 +298,6 @@ func HandleContactOption(option packets.ContactOption, connection net.Conn) erro
 					break
 				}
 				connection.Write(packet)
-				break
 			case "Remove":
 				// TODO: Implement the acknowledgement on the client side before sending out the ack.
 				// For testing purposes the ack is send so that the client is successfully removed
@@ -316,12 +321,10 @@ func HandleContactOption(option packets.ContactOption, connection net.Conn) erro
 					break
 				}
 				connection.Write(packet)
-				break
 			default:
 				log.Printf("Unknown or incorrect contact option value \"%s\". Closing connection...", v.Value)
 				return errors.New("Unknown contact value")
 			}
-			break
 		default:
 			log.Printf("Unknown contact option type \"%s\"", v.Type)
 			return errors.New("Unknown contact type")
