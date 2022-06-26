@@ -40,6 +40,14 @@ func CheckUser(user apollontypes.User) error {
 	return nil
 }
 
+func UpdateDatabase(channel chan apollontypes.User) {
+	log.Println("Starting database thread")
+	for {
+		user := <-channel
+		StoreUserInDatabase(user)
+	}
+}
+
 func StoreInDatabase(user packets.Create, connection net.Conn) error {
 	// log.Println("Storing user in database")
 
@@ -73,14 +81,28 @@ func StoreUserInDatabase(user apollontypes.User) error {
 	if err != nil {
 		return err
 	}
-	ref, exists := database[user.UserId]
-	if exists && ref.Connection != nil {
-		log.Printf("User with ID %d already exists", user.UserId)
-		return errors.New("user already exists")
-	}
+	// ref, exists := database[user.UserId]
+	// if exists && ref.Connection != nil {
+	// 	log.Printf("User with ID %d already exists", user.UserId)
+	// 	return errors.New("user already exists")
+	// }
 	database[user.UserId] = user
 	log.Printf("Stored user \"%s\" with id \"%d\"", user.Username, user.UserId)
 	return nil
+}
+
+func SetClientOffline(userId uint32) {
+	if userId == 0 {
+		return
+	}
+	log.Printf("Trying to logout %d", userId)
+	user, ex := database[userId]
+	if !ex {
+		log.Printf("User %d not found", userId)
+		return
+	}
+	user.Connection = nil
+	return
 }
 
 func SearchUsers(search string) []packets.Contact {
