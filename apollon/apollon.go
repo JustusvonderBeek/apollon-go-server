@@ -35,12 +35,14 @@ func CreatePacket(content any) ([]byte, error) {
 	return buffer, nil
 }
 
-func HandleClient(connection net.Conn) {
+func HandleClient(connection net.Conn, write chan apollontypes.User) {
 	log.Println("Handling client...")
 
 	// Init the random number generator
 	rand.Seed(time.Now().UnixNano())
 	reader := bufio.NewReader(connection)
+	var id uint32
+	id = 0
 
 	for {
 
@@ -50,6 +52,7 @@ func HandleClient(connection net.Conn) {
 		if err != nil {
 			if read == 0 {
 				log.Println("Connection closed by remote host")
+				database.SetClientOffline(id)
 				return
 			}
 			log.Println("Failed to read size information from client!")
@@ -79,25 +82,41 @@ func HandleClient(connection net.Conn) {
 			continue
 		}
 
+		// log.Printf("Raw: %x", contentBuf)
+		// log.Printf("Raw String: %s", string(contentBuf))
+
 		// category, typ, err := packets.PacketType(contentBuf)
-		header, err := packets.DeseralizePacket[packets.Header](contentBuf)
+		// packet, err := packets.DeseralizePacket(contentBuf)
+		var header packets.Header
+		err = json.Unmarshal(contentBuf, &header)
 		if err != nil {
 			log.Println("Failed to extract header information from packet")
 			// TODO: Is this rather due to an transmission error or because the client send wrong information? This should NORMALLY only happen if the client is malicous and sends incorrect data as the first part of the packet -> return
 			return
-		} else {
-			user, err := database.GetUser(header.UserId)
-			// Add the newly connected user to the online users
-			// First check for not already added, second for registered user
-			if err != nil && user.UserId != 0 {
-				user.Connection = connection
-				err = database.StoreUserInDatabase(user)
-				log.Printf("User \"%d\" connected and online", user.UserId)
-			} else {
-				// Allows to switch the connection per packet
-				user.Connection = connection
-			}
 		}
+		id = header.UserId
+
+		var user apollontypes.User
+		user, err = database.GetUser(id)
+		if err != nil {
+			if id != 0 {
+				log.Printf("Err: %s", err)
+				return
+			}
+		} else {
+			// Allow other clients to send data to this one
+			user.Connection = connection
+			// _ = database.StoreUserInDatabase(user)
+			write <- user
+		}
+
+		log.Printf("User \"%d\" connected and online", id)
+
+		// if err != nil {
+		// 	log.Printf("Got unknown packet type! %s", err.Error())
+		// 	log.Printf("Closing client connection...")
+		// 	return
+		// }
 
 		switch header.Category {
 		case packets.CAT_CONTACT:
@@ -144,11 +163,14 @@ func HandleClient(connection net.Conn) {
 					// Internal error, tried our best
 					continue
 				}
-				packet, err := CreatePacket(contactList)
+
+				encoded, err := CreatePacket(contactList)
 				if err != nil {
+					log.Println("Failed to encode answer")
 					continue
 				}
-				connection.Write(packet)
+				log.Printf("Raw: %s", string(encoded))
+				connection.Write(encoded)
 			case packets.CON_CONTACTS:
 				// packet, err = packets.DeseralizePacket[packets.ContactList](contentBuf)
 				// Should never be sent to the server
@@ -180,7 +202,7 @@ func HandleClient(connection net.Conn) {
 				user, err = database.GetUser(text.ContactUserId)
 				if err != nil {
 					log.Printf("%s! Closing connection...", err)
-					// return
+					return
 				}
 				forward, err := CreatePacket(text)
 				if err != nil {
@@ -203,16 +225,22 @@ func HandleClient(connection net.Conn) {
 					AckPart:       text.Part,
 				}
 				ack, err := CreatePacket(textAck)
+				if err != nil {
+					log.Println("Failed to create ack packet")
+					continue
+				}
 				connection.Write(ack)
 			case packets.D_TEXT_ACK:
-				// packet, err = packets.DeseralizePacket[packets.TextAck](contentBuf)
-				log.Println("Received text ack! Should never be received on the server side! Closing connection...")
-				return
+				// textAck, err = packets.DeseralizePacket[packets.TextAck](contentBuf)
+				log.Println("Received text ack! Should never be received on the server side! Ignoring for debug purposes...")
+				// return
 			default:
 				log.Printf("Incorrect packet type %d", header.Type)
+				return
 			}
 		default:
 			log.Printf("Incorrect packet category: %d", header.Category)
+			return
 		}
 
 		if err != nil {
@@ -275,7 +303,6 @@ func HandleContactOption(option packets.ContactOption, connection net.Conn) erro
 					break
 				}
 				connection.Write(packet)
-				break
 			case "Remove":
 				// TODO: Implement the acknowledgement on the client side before sending out the ack.
 				// For testing purposes the ack is send so that the client is successfully removed
@@ -299,12 +326,10 @@ func HandleContactOption(option packets.ContactOption, connection net.Conn) erro
 					break
 				}
 				connection.Write(packet)
-				break
 			default:
 				log.Printf("Unknown or incorrect contact option value \"%s\". Closing connection...", v.Value)
 				return errors.New("Unknown contact value")
 			}
-			break
 		default:
 			log.Printf("Unknown contact option type \"%s\"", v.Type)
 			return errors.New("Unknown contact type")
