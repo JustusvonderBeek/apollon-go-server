@@ -4,15 +4,35 @@ import (
 	"Loxias/apollon"
 	"Loxias/apollontypes"
 	"Loxias/database"
+	"crypto/tls"
 	"fmt"
 	"log"
 	"net"
 )
 
-func Start() {
+func Start(secure bool) {
 	fmt.Println("Starting the server...")
 
-	listen, err := net.Listen("tcp", "192.168.2.5:50000")
+	var listen net.Listener
+	var err error
+	if secure {
+		fmt.Println("Loading server certificate and key")
+		cert, err := tls.LoadX509KeyPair("./resources/apollon.crt", "./resources/server.key")
+		if err != nil {
+			fmt.Printf("Failed to load certificate: %s", err)
+			return
+		}
+
+		config := tls.Config{
+			Certificates: []tls.Certificate{cert},
+		}
+		listen, err = tls.Listen("tcp", "192.168.2.5:50000", &config)
+
+	} else {
+		listen, err = net.Listen("tcp", "192.168.2.5:50000")
+	}
+
+	// Listing on the TLS socket
 
 	if err != nil {
 		// Already closes the program (if not handled)
