@@ -30,7 +30,7 @@ const (
 )
 
 type Packet interface {
-	Create | Search | Contact | ContactList | ContactOption | Text | TextAck
+	Create | Search | Contact | ContactList | ContactOption | Text | TextAck | Header
 }
 
 type Header struct {
@@ -194,4 +194,21 @@ func CreateTextAck(messageId uint32, part uint16) TextAck {
 		AckPart:       part,
 	}
 	return ack
+}
+
+func CreateContactList(search Search, contacts []Contact) ([]byte, error) {
+	log.Println("Creating contact list packet")
+	contactList := ContactList{
+		Category:  CAT_CONTACT,
+		Type:      CON_CONTACTS,
+		UserId:    search.UserId,
+		MessageId: search.MessageId + 1,
+		Contacts:  contacts,
+	}
+	encoded, err := json.Marshal(contactList)
+	if err != nil {
+		log.Println("Failed to encode contact list packet")
+		return nil, errors.New("Encoding json failed")
+	}
+	return encoded, nil
 }

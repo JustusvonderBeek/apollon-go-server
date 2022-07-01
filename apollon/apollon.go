@@ -55,7 +55,7 @@ func HandleClient(connection net.Conn, write chan apollontypes.User) {
 				database.SetClientOffline(id)
 				return
 			}
-			log.Println("Failed to read information from client!")
+			log.Println("Failed to read size information from client!")
 			continue
 		}
 
@@ -64,6 +64,10 @@ func HandleClient(connection net.Conn, write chan apollontypes.User) {
 		size := binary.BigEndian.Uint16(sizeBuf)
 
 		log.Printf("Expecting %d bytes of data", size)
+		if size <= 4 {
+			log.Println("Keep alive packet")
+			continue
+		}
 
 		// ADAPT SIZE INFORMATION IF SIZE FIELD CHANGES
 		contentBuf := make([]byte, size-2)
@@ -74,7 +78,7 @@ func HandleClient(connection net.Conn, write chan apollontypes.User) {
 				log.Println("Connection closed by remote host")
 				return
 			}
-			log.Println("Failed to read information from the client!")
+			log.Println("Failed to read data from client!")
 			continue
 		}
 
@@ -87,6 +91,7 @@ func HandleClient(connection net.Conn, write chan apollontypes.User) {
 		err = json.Unmarshal(contentBuf, &header)
 		if err != nil {
 			log.Println("Failed to extract header information from packet")
+			// TODO: Is this rather due to an transmission error or because the client send wrong information? This should NORMALLY only happen if the client is malicous and sends incorrect data as the first part of the packet -> return
 			return
 		}
 		id = header.UserId
@@ -151,13 +156,12 @@ func HandleClient(connection net.Conn, write chan apollontypes.User) {
 				if len(users) == 0 {
 					log.Printf("No users for identifier \"%s\" found", search.UserIdentifier)
 					// What to do in this case according to protocol?
+					// I guess just send an empty list back
 				}
-				contactList := packets.ContactList{
-					Category:  packets.CAT_CONTACT,
-					Type:      packets.CON_CONTACTS,
-					UserId:    search.UserId,
-					MessageId: search.MessageId + 1,
-					Contacts:  users,
+				contactList, err := packets.CreateContactList(search, users)
+				if err != nil {
+					// Internal error, tried our best
+					continue
 				}
 
 				encoded, err := CreatePacket(contactList)
@@ -169,6 +173,7 @@ func HandleClient(connection net.Conn, write chan apollontypes.User) {
 				connection.Write(encoded)
 			case packets.CON_CONTACTS:
 				// packet, err = packets.DeseralizePacket[packets.ContactList](contentBuf)
+				// Should never be sent to the server
 				log.Println("Received contact list! Should not be received on the server side! Closing connection!")
 				return
 			case packets.CON_OPTION:
@@ -209,7 +214,7 @@ func HandleClient(connection net.Conn, write chan apollontypes.User) {
 					continue
 				}
 				user.Connection.Write(forward)
-				// Sending the ack! TODO: Normally this should only be send after the receiving side gives their OK
+				// Sending the ack! TODO: Normally this should only be send after the receiving side gives their OK - therefore no method is implemented in the packet library
 				textAck := packets.TextAck{
 					Category:      packets.CAT_DATA,
 					Type:          packets.D_TEXT_ACK,
