@@ -214,7 +214,7 @@ func HandleClient(connection net.Conn, write chan apollontypes.User) {
 					Category:      packets.CAT_DATA,
 					Type:          packets.D_TEXT_ACK,
 					UserId:        text.UserId,
-					MessageId:     text.UserId,
+					MessageId:     text.MessageId,
 					ContactUserId: text.ContactUserId,
 					Timestamp:     text.Timestamp,
 					AckPart:       text.Part,
