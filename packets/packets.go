@@ -21,6 +21,7 @@ const (
 	CON_SEARCH   = 2
 	CON_CONTACTS = 3
 	CON_OPTION   = 4
+	CON_LOGIN    = 5
 )
 
 // Data types
@@ -83,6 +84,13 @@ type ContactOption struct {
 	Options       []Option
 }
 
+type Login struct {
+	Category  byte
+	Type      byte
+	UserId    uint32
+	MessageId uint32
+}
+
 type Text struct {
 	Category      byte
 	Type          byte
@@ -139,6 +147,9 @@ func PacketType(packet []byte) (int, int, error) {
 		case CON_OPTION:
 			log.Print("Option")
 			return CAT_CONTACT, CON_OPTION, nil
+		case CON_LOGIN:
+			log.Print("Login")
+			return CAT_CONTACT, CON_LOGIN, nil
 		default:
 			log.Printf("Unknown type %d", typ)
 			return NONE, NONE, errors.New("unknown type")
