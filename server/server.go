@@ -44,6 +44,7 @@ func Start(secure bool) {
 	dbWriteChannel := make(chan apollontypes.User)
 	go database.UpdateDatabase(dbWriteChannel)
 
+	db := make(map[uint32]net.Conn)
 	// var db database.Database
 	// if err != nil {
 	// 	log.Printf("%s", err)
@@ -61,6 +62,6 @@ func Start(secure bool) {
 
 		log.Println("Client accepted")
 		// This method is generic enough (only one param, the net.Conn) so that many different functionalites can be used and implemented with this simple code snippet
-		go apollon.HandleClient(conn, dbWriteChannel)
+		go apollon.HandleClient(conn, db)
 	}
 }
