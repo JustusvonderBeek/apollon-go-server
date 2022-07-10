@@ -48,31 +48,17 @@ func UpdateDatabase(channel chan apollontypes.User) {
 	}
 }
 
-func StoreInDatabase(user packets.Create, connection net.Conn) error {
+func StoreInDatabase(user packets.Create, connection net.Conn, incoming chan []byte) error {
 	// log.Println("Storing user in database")
 
 	newUser := apollontypes.User{
-		Username:   user.Username,
-		UserId:     user.UserId,
-		Connection: connection,
+		Username: user.Username,
+		UserId:   user.UserId,
+		// Connection: connection,
+		// Incoming:   incoming,
 	}
 
-	err := CheckUser(newUser)
-	if err != nil {
-		return err
-	}
-
-	_, exists := database[user.UserId]
-
-	if exists {
-		log.Printf("User with ID %d already exists", user.UserId)
-		return errors.New("User already exists")
-	}
-
-	database[user.UserId] = newUser
-
-	log.Printf("Stored user \"%s\" with id \"%d\"", user.Username, user.UserId)
-	return nil
+	return StoreUserInDatabase(newUser)
 }
 
 func StoreUserInDatabase(user apollontypes.User) error {
@@ -81,11 +67,11 @@ func StoreUserInDatabase(user apollontypes.User) error {
 	if err != nil {
 		return err
 	}
-	// ref, exists := database[user.UserId]
-	// if exists && ref.Connection != nil {
-	// 	log.Printf("User with ID %d already exists", user.UserId)
-	// 	return errors.New("user already exists")
-	// }
+	_, exists := database[user.UserId]
+	if exists {
+		log.Printf("User with ID %d already exists", user.UserId)
+		return errors.New("user already exists")
+	}
 	database[user.UserId] = user
 	log.Printf("Stored user \"%s\" with id \"%d\"", user.Username, user.UserId)
 	return nil
@@ -96,12 +82,13 @@ func SetClientOffline(userId uint32) {
 		return
 	}
 	log.Printf("Trying to logout %d", userId)
-	user, ex := database[userId]
-	if !ex {
-		log.Printf("User %d not found", userId)
-		return
-	}
-	user.Connection = nil
+	// user, ex := database[userId]
+	// if !ex {
+	// 	log.Printf("User %d not found", userId)
+	// 	return
+	// }
+	// user.Connection = nil
+	// user.Incoming = nil
 	return
 }
 
@@ -153,7 +140,8 @@ func ConvertToByte() ([]byte, error) {
 	seperator := ","
 	counter := 0
 	for _, v := range database {
-		v.Connection = nil
+		// v.Connection = nil
+		// v.Incoming = nil
 		raw, err := json.Marshal(v)
 		if err != nil {
 			log.Printf("Failed to convert user %d to byte", v.UserId)
