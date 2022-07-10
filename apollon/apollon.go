@@ -1,13 +1,13 @@
 package apollon
 
 import (
-	"Loxias/apollontypes"
 	"Loxias/database"
 	"Loxias/packets"
 	"bufio"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"math/rand"
 	"net"
@@ -35,24 +35,38 @@ func CreatePacket(content any) ([]byte, error) {
 	return buffer, nil
 }
 
-func HandleClient(connection net.Conn, write chan apollontypes.User) {
+// func HandleIncoming(connection net.Conn, read chan []byte) {
+// 	log.Println("Starting incoming listener...")
+// 	for {
+// 		// Must be already completly read packets (including size info)
+// 		packet := <-read
+// 		connection.Write(packet)
+// 	}
+// }
+
+func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 	log.Println("Handling client...")
+
+	// incoming := make(chan []byte)
+	// go HandleIncoming(connection, incoming)
 
 	// Init the random number generator
 	rand.Seed(time.Now().UnixNano())
 	reader := bufio.NewReader(connection)
 	var id uint32
 	id = 0
+	sizeBuf := make([]byte, 2)
 
 	for {
-
-		sizeBuf := make([]byte, 2)
 		read, err := reader.Read(sizeBuf)
 
 		if err != nil {
-			if read == 0 {
+			if read == 0 && err == io.EOF {
 				log.Println("Connection closed by remote host")
-				database.SetClientOffline(id)
+				// database.SetClientOffline(id)
+				if id != 0 {
+					db[id] = nil
+				}
 				return
 			}
 			log.Println("Failed to read size information from client!")
@@ -74,8 +88,12 @@ func HandleClient(connection net.Conn, write chan apollontypes.User) {
 		read, err = reader.Read(contentBuf)
 
 		if err != nil {
-			if read == 0 {
+			if read == 0 && err == io.EOF {
 				log.Println("Connection closed by remote host")
+				// database.SetClientOffline(id)
+				if id != 0 {
+					db[id] = nil
+				}
 				return
 			}
 			log.Println("Failed to read data from client!")
@@ -92,22 +110,32 @@ func HandleClient(connection net.Conn, write chan apollontypes.User) {
 		if err != nil {
 			log.Println("Failed to extract header information from packet")
 			// TODO: Is this rather due to an transmission error or because the client send wrong information? This should NORMALLY only happen if the client is malicous and sends incorrect data as the first part of the packet -> return
+			// database.SetClientOffline(id)
+			if id != 0 {
+				db[id] = nil
+			}
 			return
 		}
 		id = header.UserId
 
-		var user apollontypes.User
-		user, err = database.GetUser(id)
-		if err != nil {
-			if id != 0 {
-				log.Printf("Err: %s", err)
-				return
-			}
-		} else {
-			// Allow other clients to send data to this one
-			user.Connection = connection
-			// _ = database.StoreUserInDatabase(user)
-			write <- user
+		// var user apollontypes.User
+		// user, err = database.GetUser(id)
+		// if err != nil && id != 0 {
+		// 	log.Printf("Err: %s", err)
+		// 	// database.SetClientOffline(id)
+		// 	if id != 0 {
+		// 		db[id] = nil
+		// 	}
+		// 	return
+		// } else {
+		// 	// Allow other clients to send data to this one
+		// 	// user.Connection = connection
+		// 	// _ = database.StoreUserInDatabase(user)
+		// 	// write <- user
+
+		// }
+		if id != 0 {
+			db[id] = connection
 		}
 
 		log.Printf("User \"%d\" connected and online", id)
@@ -135,14 +163,16 @@ func HandleClient(connection net.Conn, write chan apollontypes.User) {
 				}
 				create.UserId = newUserId
 				// Store new user in some sort of database
-				err = database.StoreInDatabase(create, connection)
+				// TODO: Update to also take the create packet
+				err = database.StoreInDatabase(create, connection, nil)
 				if err != nil {
 					// Failed to insert user into database
 					return
 				}
+				// TODO: Database should make sure the inserted data is safe
 				database.SaveToFile("./database.json")
 				// Sending back the ID to the client
-				create.UserId = newUserId
+				// create.UserId = newUserId
 				encoded, err := CreatePacket(create)
 				if err != nil {
 					log.Println("Failed to encode answer")
@@ -161,6 +191,7 @@ func HandleClient(connection net.Conn, write chan apollontypes.User) {
 				contactList, err := packets.CreateContactList(search, users)
 				if err != nil {
 					// Internal error, tried our best
+					// log.Println("Contact list could not be created")
 					continue
 				}
 
@@ -198,22 +229,28 @@ func HandleClient(connection net.Conn, write chan apollontypes.User) {
 				var text packets.Text
 				text, err = packets.DeseralizePacket[packets.Text](contentBuf)
 				log.Printf("Got \"%s\" forwarding to \"%d\"", text.Message, text.ContactUserId)
-				var user apollontypes.User
-				user, err = database.GetUser(text.ContactUserId)
-				if err != nil {
-					log.Printf("%s! Closing connection...", err)
-					return
+				// var user apollontypes.User
+				// user, err = database.GetUser(text.ContactUserId)
+				// if err != nil {
+				// 	log.Printf("%s! Closing connection...", err)
+				// 	return
+				// }
+				forwardCon, ex := db[text.ContactUserId]
+				if !ex {
+					log.Printf("Contact %d not online", text.ContactUserId)
+					continue
 				}
 				forward, err := CreatePacket(text)
 				if err != nil {
 					log.Printf("Failed to create forward packet!")
 					continue
 				}
-				if user.Connection == nil {
-					log.Printf("User %d currently not online", text.ContactUserId)
-					continue
-				}
-				user.Connection.Write(forward)
+				forwardCon.Write(forward)
+				// if user.Connection == nil {
+				// 	log.Printf("User %d currently not online", text.ContactUserId)
+				// 	continue
+				// }
+				// user.Connection.Write(forward)
 				// Sending the ack! TODO: Normally this should only be send after the receiving side gives their OK - therefore no method is implemented in the packet library
 				textAck := packets.TextAck{
 					Category:      packets.CAT_DATA,
@@ -232,7 +269,8 @@ func HandleClient(connection net.Conn, write chan apollontypes.User) {
 				connection.Write(ack)
 			case packets.D_TEXT_ACK:
 				// textAck, err = packets.DeseralizePacket[packets.TextAck](contentBuf)
-				log.Println("Received text ack! Should never be received on the server side! Ignoring for debug purposes...")
+				// TODO: Forward to the sending user
+
 				// return
 			default:
 				log.Printf("Incorrect packet type %d", header.Type)
