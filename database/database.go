@@ -7,7 +7,6 @@ import (
 	"errors"
 	"io/ioutil"
 	"log"
-	"net"
 	"os"
 	"strings"
 )
@@ -48,20 +47,19 @@ func UpdateDatabase(channel chan apollontypes.User) {
 	}
 }
 
-func StoreInDatabase(user packets.Create, connection net.Conn, incoming chan []byte) error {
+func StoreInDatabase(user packets.Create) error {
 	// log.Println("Storing user in database")
 
 	newUser := apollontypes.User{
 		Username: user.Username,
 		UserId:   user.UserId,
-		// Connection: connection,
-		// Incoming:   incoming,
 	}
 
 	return StoreUserInDatabase(newUser)
 }
 
 func StoreUserInDatabase(user apollontypes.User) error {
+	ReadFromFile("database.json")
 	// log.Println("Storing user in database")
 	err := CheckUser(user)
 	if err != nil {
@@ -74,25 +72,12 @@ func StoreUserInDatabase(user apollontypes.User) error {
 	}
 	database[user.UserId] = user
 	log.Printf("Stored user \"%s\" with id \"%d\"", user.Username, user.UserId)
+	SaveToFile("database.json")
 	return nil
 }
 
-func SetClientOffline(userId uint32) {
-	if userId == 0 {
-		return
-	}
-	log.Printf("Trying to logout %d", userId)
-	// user, ex := database[userId]
-	// if !ex {
-	// 	log.Printf("User %d not found", userId)
-	// 	return
-	// }
-	// user.Connection = nil
-	// user.Incoming = nil
-	return
-}
-
 func SearchUsers(search string) []packets.Contact {
+	ReadFromFile("database.json")
 	log.Printf("Searching for \"%s\"", search)
 
 	var users []packets.Contact
@@ -115,13 +100,14 @@ func GetUser(userId uint32) (apollontypes.User, error) {
 
 	if !err {
 		log.Printf("Failed to retrieve user with id \"%d\"", userId)
-		return user, errors.New("User not found")
+		return user, errors.New("user not found")
 	}
 
 	return user, nil
 }
 
 func IdExists(id uint32) bool {
+	ReadFromFile("database.json")
 	log.Printf("Checking if ID %d exists", id)
 
 	_, exists := database[id]
@@ -145,7 +131,7 @@ func ConvertToByte() ([]byte, error) {
 		raw, err := json.Marshal(v)
 		if err != nil {
 			log.Printf("Failed to convert user %d to byte", v.UserId)
-			err = errors.New("Not all users converted")
+			err = errors.New("not all users converted")
 			continue
 		}
 		// The '...' signal that all elements of raw should be appended
