@@ -2,17 +2,13 @@ package main
 
 import (
 	"Loxias/server"
-	"os"
+	"flag"
 )
 
 func main() {
-	secure := false
-	if len(os.Args) > 1 {
-		args := os.Args[1:]
-		if args[0] == "-tls" {
-			secure = true
-		}
-	}
+	// Parsing the cmdline
+	securePtr := flag.Bool("t", false, "Enable TLS")
+	flag.Parse()
 
-	server.Start(secure)
+	server.Start(*securePtr)
 }
