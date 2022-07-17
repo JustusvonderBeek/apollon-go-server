@@ -7,10 +7,12 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"math"
 	"math/rand"
 	"net"
+	"os"
 	"time"
 )
 
@@ -43,6 +45,24 @@ func CreatePacket(content any) ([]byte, error) {
 // 		connection.Write(packet)
 // 	}
 // }
+
+func HandleOldMessages(id uint32, connection net.Conn) {
+	log.Printf("Handling messages for \"%d\"", id)
+	messages, err := database.ReadMessagesFromFile(fmt.Sprint(id) + ".json")
+	if err != nil {
+		log.Printf("No messages for client \"%d\" found", id)
+	} else {
+		for _, v := range messages {
+			raw, err := CreatePacket(v)
+			if err != nil {
+				continue
+			}
+			connection.Write(raw)
+		}
+	}
+	// TODO: For now only rename the file but later make sure the packets arrived and then remove from the file // or delete the file completly
+	os.Rename(fmt.Sprint(id)+".json", "_"+fmt.Sprint(id)+".json")
+}
 
 func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 	log.Println("Handling client...")
@@ -115,6 +135,8 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 
 		if id > 0 {
 			db[id] = connection
+			// TODO: In order to trigger this right at the beginning we would need something as a login message with an id in it
+			go HandleOldMessages(id, connection)
 		}
 
 		log.Printf("User \"%d\" connected and online", id)
@@ -236,6 +258,7 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				forwardCon, ex := db[text.ContactUserId]
 				if !ex {
 					log.Printf("Contact %d not online", text.ContactUserId)
+					database.SaveMessagesToFile(text, fmt.Sprint(text.ContactUserId)+".json")
 					continue
 				}
 				forward, err := CreatePacket(text)
