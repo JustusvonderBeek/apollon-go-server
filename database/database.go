@@ -164,6 +164,40 @@ func SaveToFile(file string) error {
 	return nil
 }
 
+func SaveMessagesToFile(message packets.Text, file string) error {
+	log.Printf("Saving to \"%s\"", file)
+	// Append if file exists
+	content, err := ioutil.ReadFile(file)
+	var messages []packets.Text
+	if err == nil {
+		// File exists, append content
+		err := json.Unmarshal(content, &messages)
+		if err != nil {
+			log.Printf("Failed to convert existing data to JSON. Messages will be overwritte")
+		}
+		messages = append(messages, message)
+	} else {
+		messages = append(messages, message)
+	}
+	f, err := os.Create(file)
+	if err != nil {
+		log.Printf("Failed to created file \"%s\"", file)
+		return err
+	}
+	defer f.Close()
+	encoded, err := json.Marshal(messages)
+	if err != nil {
+		log.Println("Failed to encoded messages")
+		return err
+	}
+	_, err = f.Write(encoded)
+	if err != nil {
+		log.Println("Failed to write to file")
+		return err
+	}
+	return nil
+}
+
 func ReadFromFile(file string) error {
 	Clear()
 	log.Printf("Reading from \"%s\"", file)
@@ -182,4 +216,20 @@ func ReadFromFile(file string) error {
 		database[v.UserId] = v
 	}
 	return nil
+}
+
+func ReadMessagesFromFile(file string) ([]packets.Text, error) {
+	log.Printf("Reading messages from \"%s\"", file)
+	content, err := ioutil.ReadFile(file)
+	if err != nil {
+		log.Printf("Failed to read messages from \"%s\"", file)
+		return nil, err
+	}
+	var messages []packets.Text
+	err = json.Unmarshal(content, &messages)
+	if err != nil {
+		log.Printf("Failed to convert \"%s\" content to JSON", file)
+		return nil, err
+	}
+	return messages, nil
 }
