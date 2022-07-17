@@ -207,7 +207,7 @@ func CreateTextAck(messageId uint32, part uint16) TextAck {
 	return ack
 }
 
-func CreateContactList(search Search, contacts []Contact) ([]byte, error) {
+func CreateContactList(search Search, contacts []Contact) (ContactList, error) {
 	log.Println("Creating contact list packet")
 	contactList := ContactList{
 		Category:  CAT_CONTACT,
@@ -216,10 +216,5 @@ func CreateContactList(search Search, contacts []Contact) ([]byte, error) {
 		MessageId: search.MessageId + 1,
 		Contacts:  contacts,
 	}
-	encoded, err := json.Marshal(contactList)
-	if err != nil {
-		log.Println("Failed to encode contact list packet")
-		return nil, errors.New("Encoding json failed")
-	}
-	return encoded, nil
+	return contactList, nil
 }
