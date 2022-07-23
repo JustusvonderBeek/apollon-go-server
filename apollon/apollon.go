@@ -83,7 +83,7 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 		// log.Printf("%T %+v", err, err) // checking err type
 		if read == 0 {
 			log.Printf("Connection \"%d\" closed by remote host", id)
-			db[id] = nil
+			delete(db, id)
 			return
 		}
 
@@ -108,7 +108,7 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 
 		if read == 0 {
 			log.Printf("Connection \"%d\" closed by remote host", id)
-			db[id] = nil
+			delete(db, id)
 			return
 		}
 
@@ -128,7 +128,7 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 			log.Println("Failed to extract header information from packet")
 			// TODO: Is this rather due to an transmission error or because the client send wrong information? This should NORMALLY only happen if the client is malicous and sends incorrect data as the first part of the packet -> return
 			log.Printf("Set client %d to nil", id)
-			db[id] = nil
+			delete(db, id)
 			return
 		}
 		id = header.UserId
@@ -149,7 +149,7 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				create, err = packets.DeseralizePacket[packets.Create](contentBuf)
 				if err != nil {
 					// This only happens if incorrect JSON was send
-					db[id] = nil
+					delete(db, id)
 					return
 				}
 				// Generate new user id
@@ -182,7 +182,7 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				search, err = packets.DeseralizePacket[packets.Search](contentBuf)
 				if err != nil {
 					log.Println("Failed to deserialize packet")
-					db[id] = nil
+					delete(db, id)
 					return
 				}
 				users := database.SearchUsers(search.UserIdentifier)
@@ -204,24 +204,24 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 			case packets.CON_CONTACTS:
 				// Should never be sent to the server
 				log.Println("Received contact list! Should not be received on the server side! Closing connection!")
-				db[id] = nil
+				delete(db, id)
 				return
 			case packets.CON_OPTION:
 				option, err := packets.DeseralizePacket[packets.ContactOption](contentBuf)
 				if err != nil {
 					log.Println("Failed to deserialize packet!")
-					db[id] = nil
+					delete(db, id)
 					return
 				}
 				// log.Println("Received contact option")
 				err = HandleContactOption(option, connection)
 				if err != nil {
-					db[id] = nil
+					delete(db, id)
 					return
 				}
 			default:
 				log.Printf("Incorrect packet type: %d", header.Type)
-				db[id] = nil
+				delete(db, id)
 				return
 			}
 		case packets.CAT_DATA:
@@ -232,7 +232,7 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				log.Printf("Got \"%s\" forwarding to \"%d\"", text.Message, text.ContactUserId)
 				if err != nil {
 					log.Println("Failed to deserialize text packet")
-					db[id] = nil
+					delete(db, id)
 					return
 				}
 
@@ -256,7 +256,8 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 
 				// Continue with forwarding the text
 				forwardCon, ex := db[text.ContactUserId]
-				if !ex || forwardCon == nil {
+				// TODO: fix this with using delete(db, id)
+				if !ex {
 					log.Printf("Contact %d not online", text.ContactUserId)
 					database.SaveMessagesToFile(text, fmt.Sprint(text.ContactUserId)+".json")
 					continue
@@ -273,12 +274,12 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 
 			default:
 				log.Printf("Incorrect packet type %d", header.Type)
-				db[id] = nil
+				delete(db, id)
 				return
 			}
 		default:
 			log.Printf("Incorrect packet category: %d", header.Category)
-			db[id] = nil
+			delete(db, id)
 			return
 		}
 	}
