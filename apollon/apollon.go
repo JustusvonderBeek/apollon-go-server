@@ -256,7 +256,7 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 
 				// Continue with forwarding the text
 				forwardCon, ex := db[text.ContactUserId]
-				if !ex {
+				if !ex || forwardCon == nil {
 					log.Printf("Contact %d not online", text.ContactUserId)
 					database.SaveMessagesToFile(text, fmt.Sprint(text.ContactUserId)+".json")
 					continue
