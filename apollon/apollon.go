@@ -126,6 +126,11 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 		err = json.Unmarshal(contentBuf, &header)
 		if err != nil {
 			log.Println("Failed to extract header information from packet")
+			if len(contentBuf) > 100 {
+				log.Printf("Content (first 100 bytes): %x", contentBuf[:100])
+			} else {
+				log.Printf("Content: %x", contentBuf[:])
+			}
 			// TODO: Is this rather due to an transmission error or because the client send wrong information? This should NORMALLY only happen if the client is malicous and sends incorrect data as the first part of the packet -> return
 			log.Printf("Set client %d to nil", id)
 			delete(db, id)
@@ -154,7 +159,7 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				}
 				// Generate new user id
 				newUserId := rand.Uint32()
-				safeCounter := math.MaxUint32
+				safeCounter := math.MaxInt32
 				for {
 					exists := database.IdExists(newUserId)
 					if !exists || safeCounter <= 0 {
