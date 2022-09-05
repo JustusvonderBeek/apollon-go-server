@@ -7,9 +7,10 @@ import (
 	"net"
 )
 
-func Start(secure bool) {
+func Start(addr string, port string, secure bool) {
 	log.Println("Starting the server...")
 
+	compAddr := addr + ":" + port
 	var listen net.Listener
 	var err error
 	if secure {
@@ -24,9 +25,9 @@ func Start(secure bool) {
 		config := tls.Config{
 			Certificates: []tls.Certificate{cert},
 		}
-		listen, err = tls.Listen("tcp", "192.168.2.5:50000", &config)
+		listen, err = tls.Listen("tcp", compAddr, &config)
 	} else {
-		listen, err = net.Listen("tcp", "192.168.2.5:50000")
+		listen, err = net.Listen("tcp", compAddr)
 	}
 
 	// Listing on the TLS socket
@@ -56,7 +57,7 @@ func Start(secure bool) {
 			continue
 		}
 
-		log.Println("Client accepted")
+		log.Printf("Client from %s accepted", conn.RemoteAddr().String())
 		// This method is generic enough (only one param, the net.Conn) so that many different functionalites can be used and implemented with this simple code snippet
 		go apollon.HandleClient(conn, db)
 	}
