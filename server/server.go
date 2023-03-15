@@ -36,6 +36,7 @@ func Start(addr string, port string, secure bool) {
 		log.Fatalf("Failed to connect to localhost: %s", err.Error())
 	}
 	defer listen.Close()
+	log.Printf("Listing on '%s'", compAddr)
 
 	// database.ReadFromFile("database.json")
 	// dbWriteChannel := make(chan apollontypes.User)
