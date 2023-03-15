@@ -219,7 +219,12 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					return
 				}
 				// log.Println("Received contact option")
-				err = HandleContactOption(option, connection)
+				forwardCon, ex := db[option.ContactUserId]
+				if !ex {
+					// TODO: Save question to file
+					forwardCon = nil
+				}
+				err = HandleContactOption(option, connection, forwardCon)
 				if err != nil {
 					delete(db, id)
 					return
@@ -290,7 +295,7 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 	}
 }
 
-func HandleContactOption(option packets.ContactOption, connection net.Conn) error {
+func HandleContactOption(option packets.ContactOption, connection net.Conn, forwardCon net.Conn) error {
 	for _, v := range option.Options {
 		log.Printf("Option: {%s, %s}", v.Type, v.Value)
 		switch v.Type {
@@ -303,6 +308,18 @@ func HandleContactOption(option packets.ContactOption, connection net.Conn) erro
 					log.Printf("%s", err)
 					break
 				}
+
+				// TODO: Add forwarding the request to be able to automatically add the user into the list
+				if forwardCon != nil {
+					forwardPacket, err := CreatePacket(option)
+					if err != nil {
+						log.Print("Failed to create Option packet to forward!")
+						break
+					}
+					forwardCon.Write(forwardPacket)
+				}
+				log.Print("The questioned client is not online!")
+
 				// Forwarding the request to the other user
 				// if user.Connection == nil {
 				// 	log.Printf("User \"%d\" is currently not online!", option.ContactUserId)
