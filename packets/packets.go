@@ -31,7 +31,7 @@ const (
 )
 
 type Packet interface {
-	Create | Search | Contact | ContactList | ContactOption | Text | TextAck | Header
+	Create | Search | Contact | ContactList | ContactOption | Text | TextAck | Header | Login
 }
 
 type Header struct {
