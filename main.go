@@ -1,6 +1,7 @@
 package main
 
 import (
+	"Loxias/configuration"
 	"Loxias/server"
 	"flag"
 	"io"
@@ -15,11 +16,20 @@ func main() {
 	port := flag.String("p", "50000", "Listen port")
 	tlsPort := flag.String("tp", "50001", "TLS listen port")
 	logfile := flag.String("l", "server.log", "The logfile")
-	// TODO: Add option to ignore existing database
+	clearDb := flag.Bool("c", true, "Clear existing database")
 	flag.Parse()
 
+	configuration := configuration.Config{
+		Secure:           *securePtr,
+		ListenAddr:       *addr,
+		ListenPort:       *port,
+		SecureListenPort: *tlsPort,
+		Logfile:          *logfile,
+		ClearDatabase:    *clearDb,
+	}
+
 	setupLogger(*logfile)
-	server.Start(*addr, *port, *tlsPort, *securePtr)
+	server.Start(configuration)
 }
 
 func setupLogger(logfile string) {
