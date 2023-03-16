@@ -7,10 +7,11 @@ import (
 	"net"
 )
 
-func Start(addr string, port string, secure bool) {
+func Start(addr string, port string, securePort string, secure bool) {
 	log.Println("Starting the server...")
 
-	compAddr := addr + ":" + port
+	defaultAddr := addr + ":" + port
+	secureAddr := addr + ":" + securePort
 	var listen net.Listener
 	var err error
 	if secure {
@@ -25,9 +26,11 @@ func Start(addr string, port string, secure bool) {
 		config := tls.Config{
 			Certificates: []tls.Certificate{cert},
 		}
-		listen, err = tls.Listen("tcp", compAddr, &config)
+		listen, err = tls.Listen("tcp", secureAddr, &config)
+		log.Printf("Listing on '%s'", secureAddr)
 	} else {
-		listen, err = net.Listen("tcp", compAddr)
+		listen, err = net.Listen("tcp", defaultAddr)
+		log.Printf("Listing on '%s'", defaultAddr)
 	}
 
 	// Listing on the TLS socket
@@ -36,7 +39,6 @@ func Start(addr string, port string, secure bool) {
 		log.Fatalf("Failed to connect to localhost: %s", err.Error())
 	}
 	defer listen.Close()
-	log.Printf("Listing on '%s'", compAddr)
 
 	// database.ReadFromFile("database.json")
 	// dbWriteChannel := make(chan apollontypes.User)

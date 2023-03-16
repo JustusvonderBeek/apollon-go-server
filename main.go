@@ -13,11 +13,13 @@ func main() {
 	securePtr := flag.Bool("t", false, "Enable TLS")
 	addr := flag.String("a", "0.0.0.0", "Listen address")
 	port := flag.String("p", "50000", "Listen port")
+	tlsPort := flag.String("tp", "50001", "TLS listen port")
 	logfile := flag.String("l", "server.log", "The logfile")
+	// TODO: Add option to ignore existing database
 	flag.Parse()
 
 	setupLogger(*logfile)
-	server.Start(*addr, *port, *securePtr)
+	server.Start(*addr, *port, *tlsPort, *securePtr)
 }
 
 func setupLogger(logfile string) {
