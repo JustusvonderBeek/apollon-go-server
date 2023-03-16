@@ -2,19 +2,20 @@ package server
 
 import (
 	"Loxias/apollon"
+	"Loxias/configuration"
 	"crypto/tls"
 	"log"
 	"net"
 )
 
-func Start(addr string, port string, securePort string, secure bool) {
+func Start(config configuration.Config) {
 	log.Println("Starting the server...")
 
-	defaultAddr := addr + ":" + port
-	secureAddr := addr + ":" + securePort
+	defaultAddr := config.ListenAddr + ":" + config.ListenPort
+	secureAddr := config.ListenAddr + ":" + config.SecureListenPort
 	var listen net.Listener
 	var err error
-	if secure {
+	if config.Secure {
 		log.Println("Loading server certificate and key")
 		var cert tls.Certificate
 		cert, err = tls.LoadX509KeyPair("./resources/apollon.crt", "./resources/server.key")
