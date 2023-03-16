@@ -6,4 +6,5 @@ use (
 	./apollon
 	./database
 	./apollontypes
+	./configuration
 )
