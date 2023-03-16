@@ -230,13 +230,14 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					return
 				}
 			case packets.CON_LOGIN:
-				_, err := packets.DeseralizePacket[packets.Login](contentBuf)
+				login, err := packets.DeseralizePacket[packets.Login](contentBuf)
 				if err != nil {
 					log.Println("Failed to deserialize login packet!")
 					delete(db, id)
 					return
 				}
 				// Nothing else to do here. The client is already inserted into the database and the login packet seems to have the correct format!
+				log.Printf("Login from user %d", login.UserId)
 			default:
 				log.Printf("Incorrect packet type: %d", header.Type)
 				delete(db, id)
