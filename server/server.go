@@ -18,7 +18,7 @@ func Start(config configuration.Config) {
 	if config.Secure {
 		log.Println("Loading server certificate and key")
 		var cert tls.Certificate
-		cert, err = tls.LoadX509KeyPair("./resources/apollon.crt", "./resources/server.key")
+		cert, err = tls.LoadX509KeyPair(config.CertificateFile, config.CertificateKeyfile)
 		if err != nil {
 			log.Printf("Failed to load certificate: %s", err)
 			return
