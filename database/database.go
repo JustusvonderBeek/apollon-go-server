@@ -12,6 +12,7 @@ import (
 )
 
 var database = make(map[uint32]apollontypes.User)
+var databaseFile = "database.json"
 
 func PrintUser(user apollontypes.User) {
 	log.Printf("{ Username: %s, UserId: %d, Connection: nil }", user.Username, user.UserId)
@@ -59,7 +60,7 @@ func StoreInDatabase(user packets.Create) error {
 }
 
 func StoreUserInDatabase(user apollontypes.User) error {
-	ReadFromFile("database.json")
+	ReadFromFile(databaseFile)
 	// log.Println("Storing user in database")
 	err := CheckUser(user)
 	if err != nil {
@@ -72,12 +73,12 @@ func StoreUserInDatabase(user apollontypes.User) error {
 	}
 	database[user.UserId] = user
 	log.Printf("Stored user \"%s\" with id \"%d\"", user.Username, user.UserId)
-	SaveToFile("database.json")
+	SaveToFile(databaseFile)
 	return nil
 }
 
 func SearchUsers(search string) []packets.Contact {
-	ReadFromFile("database.json")
+	ReadFromFile(databaseFile)
 	log.Printf("Searching for \"%s\"", search)
 
 	var users []packets.Contact
@@ -107,7 +108,7 @@ func GetUser(userId uint32) (apollontypes.User, error) {
 }
 
 func IdExists(id uint32) bool {
-	ReadFromFile("database.json")
+	ReadFromFile(databaseFile)
 	log.Printf("Checking if ID %d exists", id)
 
 	_, exists := database[id]
@@ -117,6 +118,11 @@ func IdExists(id uint32) bool {
 
 func Clear() {
 	database = make(map[uint32]apollontypes.User)
+}
+
+func Delete() {
+	database = make(map[uint32]apollontypes.User)
+	os.Create(databaseFile)
 }
 
 func ConvertToByte() ([]byte, error) {
