@@ -5,9 +5,11 @@ import (
 	"Loxias/packets"
 	"bufio"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"math/rand"
@@ -137,6 +139,7 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 			return
 		}
 		id = header.UserId
+		log.Printf("Packet:\n%s", hex.Dump(contentBuf))
 
 		if id > 0 {
 			db[id] = connection
@@ -238,6 +241,23 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				}
 				// Nothing else to do here. The client is already inserted into the database and the login packet seems to have the correct format!
 				log.Printf("Login from user %d", login.UserId)
+			case packets.CON_CONTACT_INFO:
+				contact, err := packets.DeseralizePacket[packets.ContactInfo](contentBuf)
+				if err != nil {
+					log.Println("Failed to deserialize contact information packet!")
+					delete(db, id)
+					return
+				}
+				// log.Printf("Got contact information: %s", string(contentBuf))
+				log.Printf("Got data from %d, expecting image of size %d", contact.UserId, contact.ImageBytes)
+				imageBuffer := make([]byte, contact.ImageBytes)
+				// Variant to wait for the full image
+				// TODO: Create a timeout for this method, otherwise one could make this wait infinite
+				read, err = io.ReadFull(reader, imageBuffer)
+				if err != nil {
+					log.Printf("Failed to read image from remote!\n%s", err)
+				}
+				log.Printf("Got %d bytes, first 100 image bytes %x", read, hex.Dump(imageBuffer[:100]))
 			default:
 				log.Printf("Incorrect packet type: %d", header.Type)
 				delete(db, id)
