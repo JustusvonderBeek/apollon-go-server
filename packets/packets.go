@@ -17,11 +17,13 @@ const (
 
 // Contact types
 const (
-	CON_CREATE   = 1
-	CON_SEARCH   = 2
-	CON_CONTACTS = 3
-	CON_OPTION   = 4
-	CON_LOGIN    = 5
+	CON_CREATE       = 1
+	CON_SEARCH       = 2
+	CON_CONTACTS     = 3
+	CON_OPTION       = 4
+	CON_LOGIN        = 5
+	CON_CONTACT_INFO = 6
+	CON_CONTACT_ACK  = 7
 )
 
 // Data types
@@ -31,7 +33,7 @@ const (
 )
 
 type Packet interface {
-	Create | Search | Contact | ContactList | ContactOption | Text | TextAck | Header | Login
+	Create | Search | Contact | ContactList | ContactOption | Text | TextAck | Header | Login | ContactInfo | ContactAck
 }
 
 type Header struct {
@@ -85,6 +87,24 @@ type ContactOption struct {
 }
 
 type Login struct {
+	Category  byte
+	Type      byte
+	UserId    uint32
+	MessageId uint32
+}
+
+type ContactInfo struct {
+	Category    byte
+	Type        byte
+	UserId      uint32
+	MessageId   uint32
+	Username    string
+	ContactIds  []uint32
+	ImageBytes  uint32
+	ImageFormat string
+}
+
+type ContactAck struct {
 	Category  byte
 	Type      byte
 	UserId    uint32
@@ -150,6 +170,12 @@ func PacketType(packet []byte) (int, int, error) {
 		case CON_LOGIN:
 			log.Print("Login")
 			return CAT_CONTACT, CON_LOGIN, nil
+		case CON_CONTACT_INFO:
+			log.Print("Contact Information")
+			return CAT_CONTACT, CON_CONTACT_INFO, nil
+		case CON_CONTACT_ACK:
+			log.Print("Info")
+			return CAT_CONTACT, CON_CONTACT_ACK, nil
 		default:
 			log.Printf("Unknown type %d", typ)
 			return NONE, NONE, errors.New("unknown type")
@@ -174,7 +200,7 @@ func PacketType(packet []byte) (int, int, error) {
 }
 
 func DeseralizePacket[T Packet](packet []byte) (T, error) {
-	log.Printf("Got packet:\n%s", string(packet))
+	// log.Printf("Got packet:\n%s", string(packet))
 	// log.Printf("Got packet:\n%s\n%02x", string(packet), packet)
 
 	valid := json.Valid(packet)
@@ -217,4 +243,11 @@ func CreateContactList(search Search, contacts []Contact) (ContactList, error) {
 		Contacts:  contacts,
 	}
 	return contactList, nil
+}
+
+func ConvertContactInfoToClientContactInfo(contactInfo ContactInfo) (ContactInfo, error) {
+	log.Print("Converting the contact information from client to server format, removing all contact IDs")
+	// TODO: Maybe leave the client ID inside (no benefit for now)
+	contactInfo.ContactIds = make([]uint32, 0)
+	return contactInfo, nil
 }
