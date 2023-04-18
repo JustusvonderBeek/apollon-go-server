@@ -16,7 +16,7 @@ func main() {
 	port := flag.String("p", "50000", "Listen port")
 	tlsPort := flag.String("tp", "50001", "TLS listen port")
 	logfile := flag.String("l", "server.log", "The logfile")
-	clearDb := flag.Bool("e", true, "Clear existing database")
+	clearDb := flag.Bool("e", false, "Clear existing database")
 	tlsCertificate := flag.String("c", "resources/apollon.crt", "The location of the TLS certificate")
 	tlsKeyfile := flag.String("k", "resources/apollon.key", "The location of the TLS key")
 	flag.Parse()
