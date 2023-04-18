@@ -3,6 +3,7 @@ package server
 import (
 	"Loxias/apollon"
 	"Loxias/configuration"
+	"Loxias/database"
 	"crypto/tls"
 	"log"
 	"net"
@@ -10,6 +11,11 @@ import (
 
 func Start(config configuration.Config) {
 	log.Println("Starting the server...")
+
+	if config.ClearDatabase {
+		database.Delete()
+		log.Print("Cleared the database")
+	}
 
 	defaultAddr := config.ListenAddr + ":" + config.ListenPort
 	secureAddr := config.ListenAddr + ":" + config.SecureListenPort
