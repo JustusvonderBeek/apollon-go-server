@@ -258,6 +258,19 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					log.Printf("Failed to read image from remote!\n%s", err)
 				}
 				log.Printf("Got %d bytes, first 100 image bytes %x", read, hex.Dump(imageBuffer[:100]))
+				forwardCon, ex := db[contact.ContactIds[0]]
+				if !ex {
+					log.Printf("Contact %du not online", contact.ContactIds[0])
+					continue
+				}
+				forward, err := CreatePacket(contact)
+				if err != nil {
+					log.Print("Failed to serialize contact packet")
+					continue
+				}
+				forwardCon.Write(forward)
+				forwardCon.Write(imageBuffer)
+				log.Print("Forwarded image to %du", contact.ContactIds[0])
 			default:
 				log.Printf("Incorrect packet type: %d", header.Type)
 				delete(db, id)
