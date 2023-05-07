@@ -3,10 +3,11 @@ package database_test
 import (
 	"Loxias/apollontypes"
 	"Loxias/database"
-	"Loxias/packets"
 	"log"
 	"os"
 	"testing"
+
+	"apollon.chat.com/packets"
 )
 
 func TestInsertUser(t *testing.T) {
