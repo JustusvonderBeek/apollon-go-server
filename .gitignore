@@ -1,0 +1,5 @@
+*.log
+*.json
+*.key
+*.srl
+*.crt
