@@ -2,13 +2,14 @@ package database
 
 import (
 	"Loxias/apollontypes"
-	"Loxias/packets"
 	"encoding/json"
 	"errors"
 	"io/ioutil"
 	"log"
 	"os"
 	"strings"
+
+	"apollon.chat.com/packets"
 )
 
 var database = make(map[uint32]apollontypes.User)
@@ -48,12 +49,12 @@ func UpdateDatabase(channel chan apollontypes.User) {
 	}
 }
 
-func StoreInDatabase(user packets.Create) error {
+func StoreInDatabase(userId uint32, username string) error {
 	// log.Println("Storing user in database")
 
 	newUser := apollontypes.User{
-		Username: user.Username,
-		UserId:   user.UserId,
+		Username: username,
+		UserId:   userId,
 	}
 
 	return StoreUserInDatabase(newUser)
