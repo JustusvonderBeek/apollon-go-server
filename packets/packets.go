@@ -1,9 +1,12 @@
 package packets
 
 import (
+	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"log"
+	"math"
 	"time"
 )
 
@@ -44,18 +47,10 @@ type Header struct {
 }
 
 type Create struct {
-	Category  byte
-	Type      byte
-	UserId    uint32
-	MessageId uint32
-	Username  string
+	Username string
 }
 
 type Search struct {
-	Category       byte
-	Type           byte
-	UserId         uint32
-	MessageId      uint32
 	UserIdentifier string
 }
 
@@ -65,11 +60,7 @@ type Contact struct {
 }
 
 type ContactList struct {
-	Category  byte
-	Type      byte
-	UserId    uint32
-	MessageId uint32
-	Contacts  []Contact
+	Contacts []Contact
 }
 
 type Option struct {
@@ -78,44 +69,27 @@ type Option struct {
 }
 
 type ContactOption struct {
-	Category      byte
-	Type          byte
-	UserId        uint32
-	MessageId     uint32
 	ContactUserId uint32
 	Options       []Option
 }
 
 type Login struct {
-	Category  byte
-	Type      byte
-	UserId    uint32
 	MessageId uint32
 }
 
 type ContactInfo struct {
-	Category    byte
-	Type        byte
-	UserId      uint32
-	MessageId   uint32
 	Username    string
 	ContactIds  []uint32
 	ImageBytes  uint32
 	ImageFormat string
+	Image       []byte
 }
 
 type ContactAck struct {
-	Category  byte
-	Type      byte
-	UserId    uint32
 	MessageId uint32
 }
 
 type Text struct {
-	Category      byte
-	Type          byte
-	UserId        uint32
-	MessageId     uint32
 	ContactUserId uint32
 	Timestamp     string
 	Part          uint16
@@ -123,10 +97,6 @@ type Text struct {
 }
 
 type TextAck struct {
-	Category      byte
-	Type          byte
-	UserId        uint32
-	MessageId     uint32
 	ContactUserId uint32
 	Timestamp     string
 	AckPart       uint16
@@ -199,6 +169,32 @@ func PacketType(packet []byte) (int, int, error) {
 	}
 }
 
+func SerializePacket(header Header, content any) ([]byte, error) {
+	// Convert the json string into byte form and add the packet length
+	headerBuffer := new(bytes.Buffer)
+	err := binary.Write(headerBuffer, binary.BigEndian, header)
+	if err != nil {
+		log.Printf("Failed to encode given header to binary")
+		return nil, err
+	}
+	if content != nil {
+		payload, err := json.Marshal(content)
+		if err != nil {
+			return nil, err
+		}
+		if len(payload) > math.MaxInt32 {
+			log.Println("Packet longer than 4 GB are not supported")
+			return nil, errors.New("Packet too long")
+		}
+		packet := append(headerBuffer.Bytes(), payload...)
+		// We need to add the newline for the other end to be able to scan for this
+		packet = append(packet, []byte("\n")...)
+		return packet, nil
+	}
+	// log.Printf("Packet: %02x", buffer)
+	return headerBuffer.Bytes(), nil
+}
+
 func DeseralizePacket[T Packet](packet []byte) (T, error) {
 	// log.Printf("Got packet:\n%s", string(packet))
 	// log.Printf("Got packet:\n%s\n%02x", string(packet), packet)
@@ -219,30 +215,105 @@ func DeseralizePacket[T Packet](packet []byte) (T, error) {
 	return parsed, nil
 }
 
-func CreateTextAck(messageId uint32, part uint16) TextAck {
+func CreateLogin(userId uint32, messageId uint32) Header {
+	header := Header{
+		Category:  CAT_CONTACT,
+		Type:      CON_LOGIN,
+		UserId:    userId,
+		MessageId: messageId,
+	}
+	// login := Login{
+	// 	Category:  CAT_CONTACT,
+	// 	Type:      CON_LOGIN,
+	// 	UserId:    userId,
+	// 	MessageId: messageId,
+	// }
+	return header
+}
+
+func CreateAccount(messageId uint32, username string) (Header, Create) {
+	header := Header{
+		Category:  CAT_CONTACT,
+		Type:      CON_LOGIN,
+		UserId:    0,
+		MessageId: messageId,
+	}
+	create := Create{
+		Username: username,
+	}
+	return header, create
+}
+
+func CreateContactInfo(userId uint32, messageId uint32, username string, image []byte, contactList []uint32) (Header, ContactInfo) {
+	// Divisor should be sized so that the MTU is kept
+	// divisor := 1000.
+	// packets := int(math.Ceil(float64(len(image)) / divisor))
+	// log.Printf("# Packets: %d", packets)
+	// contactInfoPackets := make([]ContactInfo, packets)
+	// for i := 0; i < packets; i++ {
+	header := Header{
+		Category:  CAT_CONTACT,
+		Type:      CON_LOGIN,
+		UserId:    userId,
+		MessageId: messageId,
+	}
+	contactInfoStruct := ContactInfo{
+		Username:    username,
+		ContactIds:  contactList,
+		ImageBytes:  uint32(len(image)),
+		ImageFormat: "jpeg",
+		Image:       image,
+	}
+	// contactInfoPackets[i] = contactInfoStruct
+	// }
+	// return contactInfoPackets
+	return header, contactInfoStruct
+}
+
+func CreateText(userId uint32, messageId uint32, contactId uint32, text string) (Header, Text) {
+	header := Header{
+		Category:  CAT_CONTACT,
+		Type:      CON_LOGIN,
+		UserId:    userId,
+		MessageId: messageId,
+	}
+	textStruct := Text{
+		ContactUserId: contactId,
+		Timestamp:     time.Now().Format("mm:yyyy"),
+		Part:          0,
+		Message:       text,
+	}
+	return header, textStruct
+}
+
+func CreateTextAck(messageId uint32, part uint16) (Header, TextAck) {
 	// TODO: Fix the hardcoded fields
+	header := Header{
+		Category:  CAT_CONTACT,
+		Type:      CON_LOGIN,
+		UserId:    12345,
+		MessageId: messageId,
+	}
 	ack := TextAck{
-		Category:      CAT_DATA,
-		Type:          D_TEXT_ACK,
-		MessageId:     messageId,
-		UserId:        123456,
 		ContactUserId: 123456,
 		Timestamp:     time.Now().Format("mm:yyyy"),
 		AckPart:       part,
 	}
-	return ack
+	return header, ack
 }
 
-func CreateContactList(search Search, contacts []Contact) (ContactList, error) {
+func CreateContactList(searchH Header, contacts []Contact) (Header, ContactList, error) {
 	log.Println("Creating contact list packet")
-	contactList := ContactList{
+	header := Header{
 		Category:  CAT_CONTACT,
-		Type:      CON_CONTACTS,
-		UserId:    search.UserId,
-		MessageId: search.MessageId + 1,
-		Contacts:  contacts,
+		Type:      CON_LOGIN,
+		UserId:    searchH.UserId,
+		MessageId: searchH.MessageId,
 	}
-	return contactList, nil
+	contactList := ContactList{
+		Contacts: contacts,
+	}
+	return header, contactList, nil
 }
 
 func ConvertContactInfoToClientContactInfo(contactInfo ContactInfo) (ContactInfo, error) {
