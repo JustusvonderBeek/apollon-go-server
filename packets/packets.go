@@ -277,7 +277,7 @@ func CreateText(userId uint32, messageId uint32, contactId uint32, text string) 
 	}
 	textStruct := Text{
 		ContactUserId: contactId,
-		Timestamp:     time.Now().Format("mm:yyyy"),
+		Timestamp:     time.Now().Format(time.RFC3339),
 		Message:       text,
 	}
 	return header, textStruct
