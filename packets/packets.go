@@ -92,14 +92,12 @@ type ContactAck struct {
 type Text struct {
 	ContactUserId uint32
 	Timestamp     string
-	Part          uint16
 	Message       string
 }
 
 type TextAck struct {
 	ContactUserId uint32
 	Timestamp     string
-	AckPart       uint16
 }
 
 func PacketType(packet []byte) (int, int, error) {
@@ -234,7 +232,7 @@ func CreateLogin(userId uint32, messageId uint32) Header {
 func CreateAccount(messageId uint32, username string) (Header, Create) {
 	header := Header{
 		Category:  CAT_CONTACT,
-		Type:      CON_LOGIN,
+		Type:      CON_CREATE,
 		UserId:    0,
 		MessageId: messageId,
 	}
@@ -253,7 +251,7 @@ func CreateContactInfo(userId uint32, messageId uint32, username string, image [
 	// for i := 0; i < packets; i++ {
 	header := Header{
 		Category:  CAT_CONTACT,
-		Type:      CON_LOGIN,
+		Type:      CON_CONTACT_INFO,
 		UserId:    userId,
 		MessageId: messageId,
 	}
@@ -272,48 +270,46 @@ func CreateContactInfo(userId uint32, messageId uint32, username string, image [
 
 func CreateText(userId uint32, messageId uint32, contactId uint32, text string) (Header, Text) {
 	header := Header{
-		Category:  CAT_CONTACT,
-		Type:      CON_LOGIN,
+		Category:  CAT_DATA,
+		Type:      D_TEXT,
 		UserId:    userId,
 		MessageId: messageId,
 	}
 	textStruct := Text{
 		ContactUserId: contactId,
 		Timestamp:     time.Now().Format("mm:yyyy"),
-		Part:          0,
 		Message:       text,
 	}
 	return header, textStruct
 }
 
-func CreateTextAck(messageId uint32, part uint16) (Header, TextAck) {
+func CreateTextAck(userId uint32, messageId uint32, contactId uint32) (Header, TextAck) {
 	// TODO: Fix the hardcoded fields
 	header := Header{
-		Category:  CAT_CONTACT,
-		Type:      CON_LOGIN,
-		UserId:    12345,
+		Category:  CAT_DATA,
+		Type:      D_TEXT_ACK,
+		UserId:    userId,
 		MessageId: messageId,
 	}
 	ack := TextAck{
-		ContactUserId: 123456,
+		ContactUserId: contactId,
 		Timestamp:     time.Now().Format("mm:yyyy"),
-		AckPart:       part,
 	}
 	return header, ack
 }
 
-func CreateContactList(searchH Header, contacts []Contact) (Header, ContactList, error) {
+func CreateContactList(userId uint32, messageId uint32, contacts []Contact) (Header, ContactList) {
 	log.Println("Creating contact list packet")
 	header := Header{
 		Category:  CAT_CONTACT,
-		Type:      CON_LOGIN,
-		UserId:    searchH.UserId,
-		MessageId: searchH.MessageId,
+		Type:      CON_CONTACTS,
+		UserId:    userId,
+		MessageId: messageId,
 	}
 	contactList := ContactList{
 		Contacts: contacts,
 	}
-	return header, contactList, nil
+	return header, contactList
 }
 
 func ConvertContactInfoToClientContactInfo(contactInfo ContactInfo) (ContactInfo, error) {
