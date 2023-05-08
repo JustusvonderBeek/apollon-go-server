@@ -218,18 +218,18 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				// Forwarding to first friend currently TODO:
 				forwardCon, ex := db[contact.ContactIds[0]]
 				if !ex {
-					log.Printf("Contact %du not online", contact.ContactIds[0])
+					log.Printf("Contact %du not online\n", contact.ContactIds[0])
 					continue
 				}
 				forward, err := packets.SerializePacket(header, contact)
 				if err != nil {
-					log.Print("Failed to serialize contact packet")
+					log.Println("Failed to serialize contact packet")
 					continue
 				}
 				forwardCon.Write(forward)
-				log.Print("Forwarded image to %du", contact.ContactIds[0])
+				log.Printf("Forwarded image to %du\n", contact.ContactIds[0])
 			default:
-				log.Printf("Incorrect packet type: %d", header.Type)
+				log.Printf("Incorrect packet type: %d\n", header.Type)
 				delete(db, id)
 				return
 			}
@@ -243,7 +243,7 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				}
 				var text packets.Text
 				text, err = packets.DeseralizePacket[packets.Text](payload)
-				log.Printf("Got \"%s\" forwarding to \"%d\"", text.Message, text.ContactUserId)
+				log.Printf("Got \"%s\" forwarding to \"%d\"\n", text.Message, text.ContactUserId)
 				if err != nil {
 					log.Println("Failed to deserialize text packet")
 					delete(db, id)
@@ -261,7 +261,7 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					continue
 				}
 				connection.Write(ack)
-				log.Printf("Wrote textAck back to %d", header.UserId)
+				log.Printf("Wrote textAck back to %d\n", header.UserId)
 
 				// Continue with forwarding the text
 				forwardCon, ex := db[text.ContactUserId]
