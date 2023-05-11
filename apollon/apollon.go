@@ -279,8 +279,27 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				forwardCon.Write(forward)
 			case packets.D_TEXT_ACK:
 				// TODO: When this is received send it further to acked client so that he can show the "received" flag
-				// textAck, err = packets.DeseralizePacket[packets.TextAck](contentBuf)
+				payload, err := reader.ReadSlice('\n')
+				if err != nil {
+					log.Printf("Failed to read payload of contact info packet!%s\n", err)
+					continue
+				}
+				var textAck packets.TextAck
+				textAck, err = packets.DeseralizePacket[packets.TextAck](payload)
 
+				// Lookup the contacted user and forward
+				forwardCon, ex := db[textAck.ContactUserId]
+				if !ex {
+					log.Printf("Contact %d not online", textAck.ContactUserId)
+					database.SaveTextAckToFile(textAck, fmt.Sprint(textAck.ContactUserId)+".json")
+					continue
+				}
+				forward, err := packets.SerializePacket(header, textAck)
+				if err != nil {
+					log.Printf("Failed to create forward packet!")
+					continue
+				}
+				forwardCon.Write(forward)
 			default:
 				log.Printf("Incorrect packet type %d", header.Type)
 				delete(db, id)
