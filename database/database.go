@@ -171,20 +171,20 @@ func SaveToFile(file string) error {
 	return nil
 }
 
-func SaveMessagesToFile(message packets.Text, file string) error {
+func SaveAnyToFile[T packets.Packet](any T, file string) error {
 	log.Printf("Saving to \"%s\"", file)
 	// Append if file exists
 	content, err := ioutil.ReadFile(file)
-	var messages []packets.Text
+	var messages []T
 	if err == nil {
 		// File exists, append content
 		err := json.Unmarshal(content, &messages)
 		if err != nil {
 			log.Printf("Failed to convert existing data to JSON. Messages will be overwritte")
 		}
-		messages = append(messages, message)
+		messages = append(messages, any)
 	} else {
-		messages = append(messages, message)
+		messages = append(messages, any)
 	}
 	f, err := os.Create(file)
 	if err != nil {
@@ -203,6 +203,14 @@ func SaveMessagesToFile(message packets.Text, file string) error {
 		return err
 	}
 	return nil
+}
+
+func SaveMessagesToFile(message packets.Text, file string) error {
+	return SaveAnyToFile(message, file)
+}
+
+func SaveTextAckToFile(ack packets.TextAck, file string) error {
+	return SaveAnyToFile(ack, file)
 }
 
 func ReadFromFile(file string) error {
