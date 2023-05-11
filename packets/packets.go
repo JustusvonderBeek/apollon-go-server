@@ -36,7 +36,7 @@ const (
 )
 
 type Packet interface {
-	Create | Search | Contact | ContactList | ContactOption | Text | TextAck | Header | Login | ContactInfo | ContactAck
+	Create | Search | Contact | ContactList | ContactOption | Text | TextAck | Header | ContactInfo
 }
 
 type Header struct {
@@ -73,20 +73,12 @@ type ContactOption struct {
 	Options       []Option
 }
 
-type Login struct {
-	MessageId uint32
-}
-
 type ContactInfo struct {
 	Username    string
 	ContactIds  []uint32
 	ImageBytes  uint32
 	ImageFormat string
 	Image       []byte
-}
-
-type ContactAck struct {
-	MessageId uint32
 }
 
 type Text struct {
