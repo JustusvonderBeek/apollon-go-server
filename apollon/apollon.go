@@ -251,17 +251,14 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				}
 
 				// First write the ack back to the sending client (later on save the text and send to client when it comes back online)
-				textAck := packets.TextAck{
-					ContactUserId: header.UserId,
-					Timestamp:     text.Timestamp,
-				}
-				ack, err := packets.SerializePacket(header, textAck)
+				// ackHeader, textAck := packets.CreateTextAck(header.UserId, header.MessageId, text.ContactUserId)
+				// ack, err := packets.SerializePacket(ackHeader, textAck)
 				if err != nil {
 					log.Println("Failed to create ack packet")
 					continue
 				}
-				connection.Write(ack)
-				log.Printf("Wrote textAck back to %d\n", header.UserId)
+				// connection.Write(ack)
+				// log.Printf("Wrote textAck back to %d\n", header.UserId)
 
 				// Continue with forwarding the text
 				forwardCon, ex := db[text.ContactUserId]
@@ -271,11 +268,13 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					database.SaveMessagesToFile(text, fmt.Sprint(text.ContactUserId)+".json")
 					continue
 				}
+				log.Printf("Text before sending: %v", text)
 				forward, err := packets.SerializePacket(header, text)
 				if err != nil {
 					log.Printf("Failed to create forward packet!")
 					continue
 				}
+				log.Printf("Sending:\n%s", hex.Dump(forward))
 				forwardCon.Write(forward)
 			case packets.D_TEXT_ACK:
 				// TODO: When this is received send it further to acked client so that he can show the "received" flag
@@ -408,6 +407,9 @@ func HandleContactOption(header packets.Header, option packets.ContactOption, co
 				log.Printf("Unknown or incorrect contact option value \"%s\". Closing connection...", v.Value)
 				return errors.New("unknown contact value")
 			}
+		case "Add":
+			log.Printf("User is adding the contact and sending name: %s", v.Value)
+
 		default:
 			log.Printf("Unknown contact option type \"%s\"", v.Type)
 			return errors.New("unknown contact type")
