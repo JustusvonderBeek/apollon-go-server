@@ -9,4 +9,6 @@ type Config struct {
 	ClearDatabase      bool
 	CertificateFile    string
 	CertificateKeyfile string
+	DatabaseFile       string
+	DatabaseNoWrite    bool
 }
