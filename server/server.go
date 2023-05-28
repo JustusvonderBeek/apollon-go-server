@@ -7,11 +7,17 @@ import (
 	"crypto/tls"
 	"log"
 	"net"
+	"os"
 )
+
+var listen net.Listener
+var running bool
 
 func Start(config configuration.Config) {
 	log.Println("Starting the server...")
 
+	database.SetDatabaseLocation(config.DatabaseFile)
+	database.SetDatabaseNoWrite(config.DatabaseNoWrite)
 	if config.ClearDatabase {
 		database.Delete()
 		log.Print("Cleared the database")
@@ -19,7 +25,7 @@ func Start(config configuration.Config) {
 
 	defaultAddr := config.ListenAddr + ":" + config.ListenPort
 	secureAddr := config.ListenAddr + ":" + config.SecureListenPort
-	var listen net.Listener
+	running = true
 	var err error
 	if config.Secure {
 		log.Println("Loading server certificate and key")
@@ -64,11 +70,28 @@ func Start(config configuration.Config) {
 
 		if err != nil {
 			log.Printf("Failed to accept client: %s", err.Error())
+			assertClose := err.(*net.OpError)
+			if assertClose.Err == net.ErrClosed {
+				log.Printf("Server was stopped...")
+				break
+			}
 			continue
 		}
 
 		log.Printf("Client from %s accepted", conn.RemoteAddr().String())
 		// This method is generic enough (only one param, the net.Conn) so that many different functionalites can be used and implemented with this simple code snippet
 		go apollon.HandleClient(conn, db)
+
+		if !running {
+			break
+		}
 	}
+}
+
+func Stop() {
+	// Stop listening
+	running = false
+	listen.Close()
+	// Closing all running clients the hard way (TODO: fix this)
+	os.Exit(0)
 }
