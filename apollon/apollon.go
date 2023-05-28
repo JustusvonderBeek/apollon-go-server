@@ -46,6 +46,8 @@ func HandleOldMessages(id uint32, connection net.Conn) {
 func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 	log.Println("Handling client...")
 
+	defer connection.Close()
+
 	// incoming := make(chan []byte)
 	// go HandleIncoming(connection, incoming)
 
@@ -92,13 +94,6 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 		}
 		id = header.UserId
 		log.Printf("Header:\n%s", hex.Dump(headerBuffer))
-
-		if id > 0 {
-			db[id] = connection
-			go HandleOldMessages(id, connection)
-		}
-
-		log.Printf("User \"%d\" connected and online", id)
 
 		switch header.Category {
 		case packets.CAT_CONTACT:
@@ -201,6 +196,20 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 			case packets.CON_LOGIN:
 				// Nothing else to do here. The client is already inserted into the database and the login packet seems to have the correct format!
 				log.Printf("Login from user %d", header.UserId)
+				if header.UserId == 0 {
+					log.Printf("Unknown user %d! Killing connection!", header.UserId)
+					delete(db, header.UserId)
+					return
+				}
+				_, err := database.SearchUserId(header.UserId)
+				if err != nil {
+					log.Printf("Failed to find user with ID %d! Killing connection", header.UserId)
+					delete(db, header.UserId)
+					return
+				}
+				// Proceed to handle user otherwise
+				db[id] = connection
+				go HandleOldMessages(id, connection)
 			case packets.CON_CONTACT_INFO:
 				payload, err := reader.ReadSlice('\n')
 				if err != nil {
@@ -236,6 +245,12 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 		case packets.CAT_DATA:
 			switch header.Type {
 			case packets.D_TEXT:
+				_, ex := db[id]
+				if !ex {
+					log.Printf("User %d not logged in. Cannot process anything without registration and login!", id)
+					return
+				}
+
 				payload, err := reader.ReadSlice('\n')
 				if err != nil {
 					log.Printf("Failed to read payload of contact info packet!%s\n", err)
@@ -251,13 +266,13 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				}
 
 				// First write the ack back to the sending client (later on save the text and send to client when it comes back online)
-				// ackHeader, textAck := packets.CreateTextAck(header.UserId, header.MessageId, text.ContactUserId)
-				// ack, err := packets.SerializePacket(ackHeader, textAck)
+				ackHeader, textAck := packets.CreateTextAck(header.UserId, header.MessageId, text.ContactUserId)
+				ack, err := packets.SerializePacket(ackHeader, textAck)
 				if err != nil {
 					log.Println("Failed to create ack packet")
 					continue
 				}
-				// connection.Write(ack)
+				connection.Write(ack)
 				// log.Printf("Wrote textAck back to %d\n", header.UserId)
 
 				// Continue with forwarding the text
