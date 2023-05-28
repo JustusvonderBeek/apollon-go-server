@@ -14,6 +14,7 @@ import (
 
 var database = make(map[uint32]apollontypes.User)
 var databaseFile = "database.json"
+var noWrite = false
 
 func PrintUser(user apollontypes.User) {
 	log.Printf("{ Username: %s, UserId: %d, Connection: nil }", user.Username, user.UserId)
@@ -97,6 +98,24 @@ func SearchUsers(search string) []packets.Contact {
 	return users
 }
 
+func SearchUserId(userId uint32) (packets.Contact, error) {
+	err := ReadFromFile(databaseFile)
+	if err != nil {
+		log.Printf("Failed to read database from '%s'", databaseFile)
+		return packets.Contact{}, errors.New("database not found")
+	}
+	for _, v := range database {
+		if v.UserId == userId {
+			foundUser := packets.Contact{
+				UserId:   v.UserId,
+				Username: v.Username,
+			}
+			return foundUser, nil
+		}
+	}
+	return packets.Contact{}, errors.New("userID not found")
+}
+
 func GetUser(userId uint32) (apollontypes.User, error) {
 	user, err := database[userId]
 
@@ -126,10 +145,17 @@ func Delete() {
 	os.Create(databaseFile)
 }
 
+func SetDatabaseLocation(location string) {
+	databaseFile = location
+}
+
+func SetDatabaseNoWrite(overwriteDatabase bool) {
+	noWrite = overwriteDatabase
+}
+
 func ConvertToByte() ([]byte, error) {
 	var content []byte
 	var err error
-	err = nil
 	seperator := ","
 	counter := 0
 	for _, v := range database {
@@ -138,7 +164,7 @@ func ConvertToByte() ([]byte, error) {
 		raw, err := json.Marshal(v)
 		if err != nil {
 			log.Printf("Failed to convert user %d to byte", v.UserId)
-			err = errors.New("not all users converted")
+			// err = errors.New("not all users converted")
 			continue
 		}
 		// The '...' signal that all elements of raw should be appended
@@ -153,6 +179,9 @@ func ConvertToByte() ([]byte, error) {
 
 func SaveToFile(file string) error {
 	log.Printf("Saving to \"%s\"", file)
+	if noWrite {
+		return nil
+	}
 	f, err := os.Create(file)
 	if err != nil {
 		log.Printf("Failed to create file \"%s\"", file)
@@ -173,6 +202,9 @@ func SaveToFile(file string) error {
 
 func SaveAnyToFile[T packets.Packet](any T, file string) error {
 	log.Printf("Saving to \"%s\"", file)
+	if noWrite {
+		return nil
+	}
 	// Append if file exists
 	content, err := ioutil.ReadFile(file)
 	var messages []T
