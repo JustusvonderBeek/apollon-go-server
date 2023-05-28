@@ -211,6 +211,12 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				db[id] = connection
 				go HandleOldMessages(id, connection)
 			case packets.CON_CONTACT_INFO:
+				_, ex := db[id]
+				if !ex {
+					log.Printf("User %d not logged in. Cannot process anything without registration and login!", id)
+					return
+				}
+
 				payload, err := reader.ReadSlice('\n')
 				if err != nil {
 					log.Printf("Failed to read payload of contact info packet!%s\n", err)
@@ -223,20 +229,30 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					return
 				}
 				// log.Printf("Got contact information: %s", string(contentBuf))
-
-				// Forwarding to first friend currently TODO:
-				forwardCon, ex := db[contact.ContactIds[0]]
-				if !ex {
-					log.Printf("Contact %du not online\n", contact.ContactIds[0])
-					continue
-				}
-				forward, err := packets.SerializePacket(header, contact)
+				// Acknowledge that we received the packet
+				infoAck := packets.CreateContactInfoAck(header.UserId, header.MessageId)
+				rawInfoAck, err := packets.SerializePacket(infoAck, nil)
 				if err != nil {
-					log.Println("Failed to serialize contact packet")
+					log.Printf("Failed to serialize acknowledgement header!\n%s", err)
 					continue
 				}
-				forwardCon.Write(forward)
-				log.Printf("Forwarded image to %du\n", contact.ContactIds[0])
+				connection.Write(rawInfoAck)
+
+				// Forwarding to first friend currently TODO: Fix this
+				for _, v := range contact.ContactIds {
+					forwardCon, ex := db[v]
+					if !ex {
+						log.Printf("Contact %du not online\n", contact.ContactIds[0])
+						continue
+					}
+					forward, err := packets.SerializePacket(header, contact)
+					if err != nil {
+						log.Println("Failed to serialize contact packet")
+						continue
+					}
+					forwardCon.Write(forward)
+					log.Printf("Forwarded image to %du\n", contact.ContactIds[0])
+				}
 			default:
 				log.Printf("Incorrect packet type: %d\n", header.Type)
 				delete(db, id)
