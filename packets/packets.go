@@ -276,7 +276,6 @@ func CreateText(userId uint32, messageId uint32, contactId uint32, text string) 
 }
 
 func CreateTextAck(userId uint32, messageId uint32, contactId uint32) (Header, TextAck) {
-	// TODO: Fix the hardcoded fields
 	header := Header{
 		Category:  CAT_DATA,
 		Type:      D_TEXT_ACK,
