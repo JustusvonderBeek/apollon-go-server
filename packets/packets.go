@@ -289,6 +289,16 @@ func CreateTextAck(userId uint32, messageId uint32, contactId uint32) (Header, T
 	return header, ack
 }
 
+func CreateContactInfoAck(userId uint32, messageId uint32) Header {
+	header := Header{
+		Category:  CAT_CONTACT,
+		Type:      CON_CONTACT_ACK,
+		UserId:    userId,
+		MessageId: messageId,
+	}
+	return header
+}
+
 func CreateContactList(userId uint32, messageId uint32, contacts []Contact) (Header, ContactList) {
 	log.Println("Creating contact list packet")
 	header := Header{
