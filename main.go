@@ -19,6 +19,8 @@ func main() {
 	clearDb := flag.Bool("e", false, "Clear existing database")
 	tlsCertificate := flag.String("c", "resources/apollon.crt", "The location of the TLS certificate")
 	tlsKeyfile := flag.String("k", "resources/apollon.key", "The location of the TLS key")
+	databaseFile := flag.String("d", "database.json", "The location of the database JSON file")
+	databaseNoWrite := flag.Bool("n", false, "If set, changes will not be written to database file")
 	flag.Parse()
 
 	configuration := configuration.Config{
@@ -30,6 +32,8 @@ func main() {
 		ClearDatabase:      *clearDb,
 		CertificateFile:    *tlsCertificate,
 		CertificateKeyfile: *tlsKeyfile,
+		DatabaseFile:       *databaseFile,
+		DatabaseNoWrite:    *databaseNoWrite,
 	}
 
 	setupLogger(*logfile)
