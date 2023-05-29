@@ -56,6 +56,9 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 	reader := bufio.NewReader(connection)
 	var id uint32
 	id = 0
+	lastMessageId := uint32(0)
+	// Used to signal an overflow which results in the next messageId being smaller than the previous one
+	overflow := false
 	headerBuffer := make([]byte, 10)
 
 	for {
@@ -76,6 +79,8 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 
 		if read != 10 {
 			log.Fatal("The first packet was not enough to fit the header!")
+			// Flush the pipe or wait?
+			continue
 		}
 
 		// log.Printf("Raw: %x", headerBuffer)
@@ -99,12 +104,23 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 		case packets.CAT_CONTACT:
 			switch header.Type {
 			case packets.CON_CREATE:
+				if lastMessageId != 0 {
+					log.Printf("Create packet after connection establishment!")
+					delete(db, id)
+					return
+				}
+
+				lastMessageId = header.MessageId
+				// Cannot be an overflow!
+				overflow = false
+
 				// Reading the actual payload
 				payload, err := reader.ReadSlice('\n')
 				if err != nil {
 					log.Printf("Failed to read payload of create packet!\n%s", err)
 					continue
 				}
+
 				var create packets.Create
 				create, err = packets.DeseralizePacket[packets.Create](payload)
 
@@ -140,8 +156,26 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				}
 				connection.Write(encoded)
 			case packets.CON_SEARCH:
-				payload, err := reader.ReadSlice('\n')
+				_, ex := db[id]
+				if !ex {
+					log.Printf("User %d not logged in. Cannot process anything without registration and login!", id)
+					return
+				}
 
+				if lastMessageId >= header.MessageId && !overflow {
+					log.Printf("MessageID does not increase monotonically!")
+					delete(db, id)
+					return
+				}
+
+				lastMessageId = header.MessageId
+				if lastMessageId == 0 {
+					overflow = true
+				} else {
+					overflow = false
+				}
+
+				payload, err := reader.ReadSlice('\n')
 				if err != nil {
 					log.Printf("Failed to read payload of search packet!%s\n", err)
 					continue
@@ -171,11 +205,31 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				delete(db, id)
 				return
 			case packets.CON_OPTION:
+				_, ex := db[id]
+				if !ex {
+					log.Printf("User %d not logged in. Cannot process anything without registration and login!", id)
+					return
+				}
+
+				if lastMessageId >= header.MessageId && !overflow {
+					log.Printf("MessageID does not increase monotonically!")
+					delete(db, id)
+					return
+				}
+
+				lastMessageId = header.MessageId
+				if lastMessageId == 0 {
+					overflow = true
+				} else {
+					overflow = false
+				}
+
 				payload, err := reader.ReadSlice('\n')
 				if err != nil {
 					log.Printf("Failed to read payload of contact option packet!%s\n", err)
 					continue
 				}
+
 				option, err := packets.DeseralizePacket[packets.ContactOption](payload)
 				if err != nil {
 					log.Println("Failed to deserialize packet!")
@@ -186,7 +240,9 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				forwardCon, ex := db[option.ContactUserId]
 				if !ex {
 					// TODO: Save question to file
+					// database.SaveContactOption(option, fmt.Sprint(option.ContactUserId)+".json")
 					forwardCon = nil
+					continue
 				}
 				err = HandleContactOption(header, option, connection, forwardCon)
 				if err != nil {
@@ -201,6 +257,16 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					delete(db, header.UserId)
 					return
 				}
+
+				if lastMessageId != 0 {
+					log.Print("Login in incorrect (established) state!")
+					return
+				}
+
+				lastMessageId = header.MessageId
+				// Cannot be an overflow
+				overflow = false
+
 				_, err := database.SearchUserId(header.UserId)
 				if err != nil {
 					log.Printf("Failed to find user with ID %d! Killing connection", header.UserId)
@@ -215,6 +281,19 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				if !ex {
 					log.Printf("User %d not logged in. Cannot process anything without registration and login!", id)
 					return
+				}
+
+				if lastMessageId >= header.MessageId && !overflow {
+					log.Printf("MessageID does not increase monotonically!")
+					delete(db, id)
+					return
+				}
+
+				lastMessageId = header.MessageId
+				if lastMessageId == 0 {
+					overflow = true
+				} else {
+					overflow = false
 				}
 
 				payload, err := reader.ReadSlice('\n')
@@ -239,19 +318,20 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				connection.Write(rawInfoAck)
 
 				// Forwarding to first friend currently TODO: Fix this
+				forward, err := packets.SerializePacket(header, contact)
+				if err != nil {
+					log.Println("Failed to serialize contact packet")
+					continue
+				}
 				for _, v := range contact.ContactIds {
 					forwardCon, ex := db[v]
 					if !ex {
-						log.Printf("Contact %du not online\n", contact.ContactIds[0])
-						continue
-					}
-					forward, err := packets.SerializePacket(header, contact)
-					if err != nil {
-						log.Println("Failed to serialize contact packet")
+						log.Printf("Contact %du not online\n", v)
+						// database.SaveContactInfoToFile(contact, fmt.Sprint(v)+".json")
 						continue
 					}
 					forwardCon.Write(forward)
-					log.Printf("Forwarded image to %du\n", contact.ContactIds[0])
+					log.Printf("Forwarded contact info to %du\n", v)
 				}
 			default:
 				log.Printf("Incorrect packet type: %d\n", header.Type)
@@ -267,11 +347,25 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					return
 				}
 
+				if lastMessageId >= header.MessageId && !overflow {
+					log.Printf("MessageID does not increase monotonically!")
+					delete(db, id)
+					return
+				}
+
+				lastMessageId = header.MessageId
+				if lastMessageId == 0 {
+					overflow = true
+				} else {
+					overflow = false
+				}
+
 				payload, err := reader.ReadSlice('\n')
 				if err != nil {
 					log.Printf("Failed to read payload of contact info packet!%s\n", err)
 					continue
 				}
+
 				var text packets.Text
 				text, err = packets.DeseralizePacket[packets.Text](payload)
 				log.Printf("Got \"%s\" forwarding to \"%d\"\n", text.Message, text.ContactUserId)
@@ -293,7 +387,6 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 
 				// Continue with forwarding the text
 				forwardCon, ex := db[text.ContactUserId]
-				// TODO: fix this with using delete(db, id)
 				if !ex {
 					log.Printf("Contact %d not online", text.ContactUserId)
 					database.SaveMessagesToFile(text, fmt.Sprint(text.ContactUserId)+".json")
@@ -316,12 +409,18 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				}
 				var textAck packets.TextAck
 				textAck, err = packets.DeseralizePacket[packets.TextAck](payload)
+				if err != nil {
+					log.Printf("Failed to deserialize text ack!")
+					// We cannot decode, so also not store the answer...
+					// database.SaveTextAckToFile(textAck, fmt.Sprint(textAck.ContactUserId)+".json")
+					continue
+				}
 
 				// Lookup the contacted user and forward
 				forwardCon, ex := db[textAck.ContactUserId]
 				if !ex {
 					log.Printf("Contact %d not online", textAck.ContactUserId)
-					database.SaveTextAckToFile(textAck, fmt.Sprint(textAck.ContactUserId)+".json")
+					// database.SaveTextAckToFile(textAck, fmt.Sprint(textAck.ContactUserId)+".json")
 					continue
 				}
 				forward, err := packets.SerializePacket(header, textAck)
