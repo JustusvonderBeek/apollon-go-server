@@ -200,6 +200,7 @@ func SaveToFile(file string) error {
 	return nil
 }
 
+// TODO: Find a method to store and retrieve all types of JSON from a single or multiple files!
 func SaveAnyToFile[T packets.Packet](any T, file string) error {
 	log.Printf("Saving to \"%s\"", file)
 	if noWrite {
@@ -243,6 +244,18 @@ func SaveMessagesToFile(message packets.Text, file string) error {
 
 func SaveTextAckToFile(ack packets.TextAck, file string) error {
 	return SaveAnyToFile(ack, file)
+}
+
+func SaveContactInfoToFile(info packets.ContactInfo, file string) error {
+	return SaveAnyToFile(info, file)
+}
+
+func SaveSearchAnswerToFile(search packets.Search, file string) error {
+	return SaveAnyToFile(search, file)
+}
+
+func SaveContactOption(option packets.ContactOption, file string) error {
+	return SaveAnyToFile(option, file)
 }
 
 func ReadFromFile(file string) error {
