@@ -18,6 +18,8 @@ import (
 	"apollon.chat.com/packets"
 )
 
+var MESSAGE_QUEUE_SIZE int = 50
+
 func HandleOldMessages(id uint32, connection net.Conn) {
 	log.Printf("Handling messages for \"%d\"", id)
 	messages, err := database.ReadMessagesFromFile(fmt.Sprint(id) + ".json")
@@ -43,6 +45,20 @@ func HandleOldMessages(id uint32, connection net.Conn) {
 	os.Rename(fmt.Sprint(id)+".json", "_"+fmt.Sprint(id)+".json")
 }
 
+func MessageIDExists(messageId uint32, lastMessageIDs []uint32) int {
+	for i, v := range lastMessageIDs {
+		if v == messageId {
+			return i
+		}
+	}
+	return -1
+}
+
+func AddMessageId(messageId uint32, count *int, lastMessageIDs *[]uint32) {
+	(*lastMessageIDs)[*count] = messageId
+	*count = (*count + 1) % MESSAGE_QUEUE_SIZE
+}
+
 func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 	log.Println("Handling client...")
 
@@ -56,9 +72,10 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 	reader := bufio.NewReader(connection)
 	var id uint32
 	id = 0
-	lastMessageId := uint32(0)
-	// Used to signal an overflow which results in the next messageId being smaller than the previous one
-	overflow := false
+	// Keeping track of the last n messageIDs for this client
+	lastMessageId := make([]uint32, MESSAGE_QUEUE_SIZE)
+	count := 0
+
 	headerBuffer := make([]byte, 10)
 
 	for {
@@ -104,15 +121,13 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 		case packets.CAT_CONTACT:
 			switch header.Type {
 			case packets.CON_CREATE:
-				if lastMessageId != 0 {
+				if count != 0 {
 					log.Printf("Create packet after connection establishment!")
 					delete(db, id)
 					return
 				}
 
-				lastMessageId = header.MessageId
-				// Cannot be an overflow!
-				overflow = false
+				AddMessageId(header.MessageId, &count, &lastMessageId)
 
 				// Reading the actual payload
 				payload, err := reader.ReadSlice('\n')
@@ -148,6 +163,9 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					// Failed to insert user into database
 					continue
 				}
+				// Logging in the client
+				db[newUserId] = connection
+
 				// Sending back the ID to the client
 				encoded, err := packets.SerializePacket(header, nil)
 				if err != nil {
@@ -162,18 +180,13 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					return
 				}
 
-				if lastMessageId >= header.MessageId && !overflow {
-					log.Printf("MessageID does not increase monotonically!")
+				if MessageIDExists(header.MessageId, lastMessageId) > 0 {
+					log.Printf("MessageID has already been seen!")
 					delete(db, id)
 					return
 				}
 
-				lastMessageId = header.MessageId
-				if lastMessageId == 0 {
-					overflow = true
-				} else {
-					overflow = false
-				}
+				AddMessageId(header.MessageId, &count, &lastMessageId)
 
 				payload, err := reader.ReadSlice('\n')
 				if err != nil {
@@ -211,18 +224,13 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					return
 				}
 
-				if lastMessageId >= header.MessageId && !overflow {
-					log.Printf("MessageID does not increase monotonically!")
+				if MessageIDExists(header.MessageId, lastMessageId) > 0 {
+					log.Printf("MessageID has already been seen!")
 					delete(db, id)
 					return
 				}
 
-				lastMessageId = header.MessageId
-				if lastMessageId == 0 {
-					overflow = true
-				} else {
-					overflow = false
-				}
+				AddMessageId(header.MessageId, &count, &lastMessageId)
 
 				payload, err := reader.ReadSlice('\n')
 				if err != nil {
@@ -258,14 +266,12 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					return
 				}
 
-				if lastMessageId != 0 {
+				if count != 0 {
 					log.Print("Login in incorrect (established) state!")
 					return
 				}
 
-				lastMessageId = header.MessageId
-				// Cannot be an overflow
-				overflow = false
+				AddMessageId(header.MessageId, &count, &lastMessageId)
 
 				_, err := database.SearchUserId(header.UserId)
 				if err != nil {
@@ -283,18 +289,13 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					return
 				}
 
-				if lastMessageId >= header.MessageId && !overflow {
-					log.Printf("MessageID does not increase monotonically!")
+				if MessageIDExists(header.MessageId, lastMessageId) > 0 {
+					log.Printf("MessageID has already been seen!")
 					delete(db, id)
 					return
 				}
 
-				lastMessageId = header.MessageId
-				if lastMessageId == 0 {
-					overflow = true
-				} else {
-					overflow = false
-				}
+				AddMessageId(header.MessageId, &count, &lastMessageId)
 
 				payload, err := reader.ReadSlice('\n')
 				if err != nil {
@@ -347,18 +348,13 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					return
 				}
 
-				if lastMessageId >= header.MessageId && !overflow {
+				if MessageIDExists(header.MessageId, lastMessageId) > 0 {
 					log.Printf("MessageID does not increase monotonically!")
 					delete(db, id)
 					return
 				}
 
-				lastMessageId = header.MessageId
-				if lastMessageId == 0 {
-					overflow = true
-				} else {
-					overflow = false
-				}
+				AddMessageId(header.MessageId, &count, &lastMessageId)
 
 				payload, err := reader.ReadSlice('\n')
 				if err != nil {
@@ -402,6 +398,15 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				forwardCon.Write(forward)
 			case packets.D_TEXT_ACK:
 				// TODO: When this is received send it further to acked client so that he can show the "received" flag
+
+				// Difficult to check. Contains the same ID as the text, so cannot really check twice
+				// if MessageIDExists(header.MessageId, lastMessageId) > 0 {
+				// 	log.Printf("MessageID in text ack has already been seen!")
+				// 	// not going to forward
+				// 	continue
+				// }
+				// AddMessageId(header.MessageId, &count, &lastMessageId)
+
 				payload, err := reader.ReadSlice('\n')
 				if err != nil {
 					log.Printf("Failed to read payload of contact info packet!%s\n", err)
