@@ -2,6 +2,7 @@ package packets_test
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"testing"
@@ -209,6 +210,134 @@ func TestContactListPacket(t *testing.T) {
 	}
 	if !reflect.DeepEqual(list.Contacts, contacts) {
 		fmt.Printf("Contact list is not the same!\n")
+		t.Fail()
+	}
+}
+
+func TestFileInfoPacket(t *testing.T) {
+	fileName := "image.png"
+	fileType := "IMAGE"
+	fileLength := 20120313
+	compression := "None"
+	compressionLength := 20120313
+	fileHash := 1293102301203
+
+	userId := uint32(1234)
+	messageId := uint32(4321)
+
+	header, info := packets.CreateFileInfo(userId, messageId, fileName, uint32(fileLength), int64(fileHash), compression, uint32(compressionLength))
+	if header.Category != packets.CAT_DATA {
+		t.FailNow()
+	}
+	if header.Type != packets.D_FILE_INFO {
+		t.FailNow()
+	}
+	if header.UserId != userId {
+		t.FailNow()
+	}
+	if header.MessageId != messageId {
+		t.FailNow()
+	}
+	if info.FileType != fileType {
+		t.FailNow()
+	}
+	headerRaw, _ := packets.SerializePacket(header, nil)
+	raw := []byte{0x02, 0x03, 0x00, 0x00, 0x04, 0xD2, 0x00, 0x00, 0x10, 0xE1}
+	if !reflect.DeepEqual(headerRaw, raw) {
+		fmt.Printf("Headers not equal:\nExpected: %s\nGot: %s\n", hex.Dump(raw), hex.Dump(headerRaw))
+		t.Fail()
+	}
+	serializedRaw, _ := json.Marshal(info)
+	serialized := string(serializedRaw)
+	compareJson := fmt.Sprintf("{\"FileType\":\"IMAGE\",\"FileName\":\"%s\",\"FileLength\":%d,\"Compression\":\"%s\",\"CompressedLength\":%d,\"FileHash\":%d}", fileName, fileLength, compression, compressionLength, fileHash)
+	if serialized != compareJson {
+		fmt.Printf("Serialized and expected do not match!\n%s\n%s\n", serialized, compareJson)
+		t.FailNow()
+	}
+}
+
+func TestFileHavePacket(t *testing.T) {
+	userId := uint32(1234)
+	messageId := uint32(4321)
+
+	offset := 123123
+	header, fileHave := packets.CreateFileHave(userId, messageId, uint64(offset))
+	if header.Category != packets.CAT_DATA {
+		t.FailNow()
+	}
+	if header.Type != packets.D_FILE_HAVE {
+		t.FailNow()
+	}
+	if header.UserId != userId {
+		t.FailNow()
+	}
+	if header.MessageId != messageId {
+		t.FailNow()
+	}
+	if fileHave.FileOffset != uint64(offset) {
+		t.FailNow()
+	}
+	headerRaw, _ := packets.SerializePacket(header, nil)
+	raw := []byte{0x02, 0x04, 0x00, 0x00, 0x04, 0xD2, 0x00, 0x00, 0x10, 0xE1}
+	if !reflect.DeepEqual(headerRaw, raw) {
+		fmt.Printf("Headers not equal:\nExpected: %s\nGot: %s\n", hex.Dump(raw), hex.Dump(headerRaw))
+		t.Fail()
+	}
+	serializedRaw, _ := json.Marshal(fileHave)
+	serialized := string(serializedRaw)
+	compareJson := fmt.Sprintf("{\"FileOffset\":%d}", offset)
+	if serialized != compareJson {
+		fmt.Printf("Serialized and expected do not match!\n%s\n%s\n", serialized, compareJson)
+		t.FailNow()
+	}
+}
+
+func TestFilePacket(t *testing.T) {
+	userId := uint32(1234)
+	messageId := uint32(4321)
+
+	header := packets.CreateFile(userId, messageId)
+	if header.Category != packets.CAT_DATA {
+		t.FailNow()
+	}
+	if header.Type != packets.D_FILE {
+		t.FailNow()
+	}
+	if header.UserId != userId {
+		t.FailNow()
+	}
+	if header.MessageId != messageId {
+		t.FailNow()
+	}
+	headerRaw, _ := packets.SerializePacket(header, nil)
+	raw := []byte{0x02, 0x05, 0x00, 0x00, 0x04, 0xD2, 0x00, 0x00, 0x10, 0xE1}
+	if !reflect.DeepEqual(headerRaw, raw) {
+		fmt.Printf("Headers not equal:\nExpected: %s\nGot: %s\n", hex.Dump(raw), hex.Dump(headerRaw))
+		t.Fail()
+	}
+}
+
+func TestFileAck(t *testing.T) {
+	userId := uint32(1234)
+	messageId := uint32(4321)
+
+	header := packets.CreateFileAck(userId, messageId)
+	if header.Category != packets.CAT_DATA {
+		t.FailNow()
+	}
+	if header.Type != packets.D_FILE_ACK {
+		t.FailNow()
+	}
+	if header.UserId != userId {
+		t.FailNow()
+	}
+	if header.MessageId != messageId {
+		t.FailNow()
+	}
+	headerRaw, _ := packets.SerializePacket(header, nil)
+	raw := []byte{0x02, 0x06, 0x00, 0x00, 0x04, 0xD2, 0x00, 0x00, 0x10, 0xE1}
+	if !reflect.DeepEqual(headerRaw, raw) {
+		fmt.Printf("Headers not equal:\nExpected: %s\nGot: %s\n", hex.Dump(raw), hex.Dump(headerRaw))
 		t.Fail()
 	}
 }
