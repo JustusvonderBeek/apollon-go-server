@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log"
 	"math"
+	"strings"
 	"time"
 )
 
@@ -31,12 +32,16 @@ const (
 
 // Data types
 const (
-	D_TEXT     = 1
-	D_TEXT_ACK = 2
+	D_TEXT      = 1
+	D_TEXT_ACK  = 2
+	D_FILE_INFO = 3
+	D_FILE_HAVE = 4
+	D_FILE      = 5
+	D_FILE_ACK  = 6
 )
 
 type Packet interface {
-	Create | Search | Contact | ContactList | ContactOption | Text | TextAck | Header | ContactInfo
+	Create | Search | Contact | ContactList | ContactOption | Text | TextAck | Header | ContactInfo | FileInfo | FileHave
 }
 
 type Header struct {
@@ -90,6 +95,19 @@ type Text struct {
 type TextAck struct {
 	ContactUserId uint32
 	Timestamp     string
+}
+
+type FileInfo struct {
+	FileType         string
+	FileName         string
+	FileLength       uint32
+	Compression      string
+	CompressedLength uint32
+	FileHash         int64
+}
+
+type FileHave struct {
+	FileOffset uint64
 }
 
 func PacketType(packet []byte) (int, int, error) {
@@ -149,6 +167,18 @@ func PacketType(packet []byte) (int, int, error) {
 		case D_TEXT_ACK:
 			log.Print("Text Ack")
 			return CAT_DATA, D_TEXT_ACK, nil
+		case D_FILE_INFO:
+			log.Print("File Info")
+			return CAT_DATA, D_FILE_INFO, nil
+		case D_FILE_HAVE:
+			log.Print("File Have")
+			return CAT_DATA, D_FILE_HAVE, nil
+		case D_FILE:
+			log.Print("File")
+			return CAT_DATA, D_FILE, nil
+		case D_FILE_ACK:
+			log.Print("File Ack")
+			return CAT_DATA, D_FILE_ACK, nil
 		default:
 			log.Printf("Unknown type %d", typ)
 			return NONE, NONE, errors.New("unknown type")
@@ -318,4 +348,63 @@ func ConvertContactInfoToClientContactInfo(contactInfo ContactInfo) (ContactInfo
 	// TODO: Maybe leave the client ID inside (no benefit for now)
 	contactInfo.ContactIds = make([]uint32, 0)
 	return contactInfo, nil
+}
+
+func CreateFileInfo(userId uint32, messageId uint32, fileName string, fileLength uint32, fileHash int64, fileCompression string, compressionLength uint32) (Header, FileInfo) {
+	log.Print("Creating file info")
+	header := Header{
+		Category:  CAT_DATA,
+		Type:      D_FILE_INFO,
+		UserId:    userId,
+		MessageId: messageId,
+	}
+	fileType := "File"
+	if strings.HasSuffix(fileName, ".png") || strings.HasSuffix(fileName, ".jpeg") {
+		fileType = "Image"
+	}
+	if strings.HasSuffix(fileName, ".mp4") || strings.HasSuffix(fileName, ".wmv") {
+		fileType = "Video"
+	}
+	fileInfo := FileInfo{
+		FileName:         fileName,
+		FileType:         fileType,
+		FileLength:       fileLength,
+		Compression:      fileCompression,
+		CompressedLength: compressionLength,
+		FileHash:         fileHash,
+	}
+	return header, fileInfo
+}
+
+func CreateFileHave(userId uint32, messageId uint32, offset uint64) (Header, FileHave) {
+	header := Header{
+		Category:  CAT_DATA,
+		Type:      D_FILE_HAVE,
+		UserId:    userId,
+		MessageId: messageId,
+	}
+	fileHave := FileHave{
+		FileOffset: offset,
+	}
+	return header, fileHave
+}
+
+func CreateFile(userId uint32, messageId uint32) Header {
+	header := Header{
+		Category:  CAT_DATA,
+		Type:      D_FILE,
+		UserId:    userId,
+		MessageId: messageId,
+	}
+	return header
+}
+
+func CreateFileAck(userId uint32, messageId uint32) Header {
+	header := Header{
+		Category:  CAT_DATA,
+		Type:      D_FILE_ACK,
+		UserId:    userId,
+		MessageId: messageId,
+	}
+	return header
 }
