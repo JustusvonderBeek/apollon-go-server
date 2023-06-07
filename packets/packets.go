@@ -358,12 +358,12 @@ func CreateFileInfo(userId uint32, messageId uint32, fileName string, fileLength
 		UserId:    userId,
 		MessageId: messageId,
 	}
-	fileType := "File"
+	fileType := "FILE"
 	if strings.HasSuffix(fileName, ".png") || strings.HasSuffix(fileName, ".jpeg") {
-		fileType = "Image"
+		fileType = "IMAGE"
 	}
 	if strings.HasSuffix(fileName, ".mp4") || strings.HasSuffix(fileName, ".wmv") {
-		fileType = "Video"
+		fileType = "VIDEO"
 	}
 	fileInfo := FileInfo{
 		FileName:         fileName,
