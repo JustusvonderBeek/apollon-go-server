@@ -20,6 +20,11 @@ import (
 
 var MESSAGE_QUEUE_SIZE int = 50
 
+type StoreMessage struct {
+	MessageID uint32
+	Type      int16
+}
+
 func HandleOldMessages(id uint32, connection net.Conn) {
 	log.Printf("Handling messages for \"%d\"", id)
 	messages, err := database.ReadMessagesFromFile(fmt.Sprint(id) + ".json")
@@ -45,17 +50,22 @@ func HandleOldMessages(id uint32, connection net.Conn) {
 	os.Rename(fmt.Sprint(id)+".json", "_"+fmt.Sprint(id)+".json")
 }
 
-func MessageIDExists(messageId uint32, lastMessageIDs []uint32) int {
+func MessageIDExists(messageId uint32, lastMessageIDs []StoreMessage) int {
 	for i, v := range lastMessageIDs {
-		if v == messageId {
+		if v.MessageID == messageId {
 			return i
 		}
 	}
 	return -1
 }
 
-func AddMessageId(messageId uint32, count *int, lastMessageIDs *[]uint32) {
-	(*lastMessageIDs)[*count] = messageId
+func AlreadySeen(category byte, pType byte, existing int16) bool {
+	packet := (int16(category) << 8) | int16(pType)
+	return packet == existing
+}
+
+func AddMessageId(messageId uint32, category byte, pType byte, count *int, lastMessageIDs *[]StoreMessage) {
+	(*lastMessageIDs)[*count] = StoreMessage{MessageID: messageId, Type: (int16(category) << 8) | int16(pType)}
 	*count = (*count + 1) % MESSAGE_QUEUE_SIZE
 }
 
@@ -73,7 +83,7 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 	var id uint32
 	id = 0
 	// Keeping track of the last n messageIDs for this client
-	lastMessageId := make([]uint32, MESSAGE_QUEUE_SIZE)
+	lastMessageId := make([]StoreMessage, MESSAGE_QUEUE_SIZE)
 	count := 0
 
 	headerBuffer := make([]byte, 10)
@@ -127,7 +137,7 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					return
 				}
 
-				AddMessageId(header.MessageId, &count, &lastMessageId)
+				AddMessageId(header.MessageId, header.Category, header.Type, &count, &lastMessageId)
 
 				// Reading the actual payload
 				payload, err := reader.ReadSlice('\n')
@@ -180,13 +190,21 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					return
 				}
 
-				if MessageIDExists(header.MessageId, lastMessageId) > 0 {
+				if index := MessageIDExists(header.MessageId, lastMessageId); index > -1 {
 					log.Printf("MessageID has already been seen!")
-					delete(db, id)
-					return
+					stored := lastMessageId[index]
+					if !AlreadySeen(header.Category, header.Type, stored.Type) {
+						delete(db, id)
+						return
+					} else {
+						// This packet is a duplicate, continue
+						// But first "clean the pipe"
+						_, _ = reader.ReadSlice('\n')
+						continue
+					}
 				}
 
-				AddMessageId(header.MessageId, &count, &lastMessageId)
+				AddMessageId(header.MessageId, header.Category, header.Type, &count, &lastMessageId)
 
 				payload, err := reader.ReadSlice('\n')
 				if err != nil {
@@ -224,13 +242,20 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					return
 				}
 
-				if MessageIDExists(header.MessageId, lastMessageId) > 0 {
+				if index := MessageIDExists(header.MessageId, lastMessageId); index > -1 {
 					log.Printf("MessageID has already been seen!")
-					delete(db, id)
-					return
+					stored := lastMessageId[index]
+					if !AlreadySeen(header.Category, header.Type, stored.Type) {
+						delete(db, id)
+						return
+					} else {
+						// This packet is a duplicate, continue
+						_, _ = reader.ReadSlice('\n')
+						continue
+					}
 				}
 
-				AddMessageId(header.MessageId, &count, &lastMessageId)
+				AddMessageId(header.MessageId, header.Category, header.Type, &count, &lastMessageId)
 
 				payload, err := reader.ReadSlice('\n')
 				if err != nil {
@@ -271,7 +296,7 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					return
 				}
 
-				AddMessageId(header.MessageId, &count, &lastMessageId)
+				AddMessageId(header.MessageId, header.Category, header.Type, &count, &lastMessageId)
 
 				_, err := database.SearchUserId(header.UserId)
 				if err != nil {
@@ -289,13 +314,20 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					return
 				}
 
-				if MessageIDExists(header.MessageId, lastMessageId) > 0 {
+				if index := MessageIDExists(header.MessageId, lastMessageId); index > -1 {
 					log.Printf("MessageID has already been seen!")
-					delete(db, id)
-					return
+					stored := lastMessageId[index]
+					if !AlreadySeen(header.Category, header.Type, stored.Type) {
+						delete(db, id)
+						return
+					} else {
+						// This packet is a duplicate, continue
+						_, _ = reader.ReadSlice('\n')
+						continue
+					}
 				}
 
-				AddMessageId(header.MessageId, &count, &lastMessageId)
+				AddMessageId(header.MessageId, header.Category, header.Type, &count, &lastMessageId)
 
 				payload, err := reader.ReadSlice('\n')
 				if err != nil {
@@ -318,7 +350,6 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				}
 				connection.Write(rawInfoAck)
 
-				// Forwarding to first friend currently TODO: Fix this
 				forward, err := packets.SerializePacket(header, contact)
 				if err != nil {
 					log.Println("Failed to serialize contact packet")
@@ -348,13 +379,20 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					return
 				}
 
-				if MessageIDExists(header.MessageId, lastMessageId) > 0 {
-					log.Printf("MessageID does not increase monotonically!")
-					delete(db, id)
-					return
+				if index := MessageIDExists(header.MessageId, lastMessageId); index > -1 {
+					log.Printf("MessageID has already been seen!")
+					stored := lastMessageId[index]
+					if !AlreadySeen(header.Category, header.Type, stored.Type) {
+						delete(db, id)
+						return
+					} else {
+						// This packet is a duplicate, continue
+						_, _ = reader.ReadSlice('\n')
+						continue
+					}
 				}
 
-				AddMessageId(header.MessageId, &count, &lastMessageId)
+				AddMessageId(header.MessageId, header.Category, header.Type, &count, &lastMessageId)
 
 				payload, err := reader.ReadSlice('\n')
 				if err != nil {
@@ -429,6 +467,57 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					continue
 				}
 				forward, err := packets.SerializePacket(header, textAck)
+				if err != nil {
+					log.Printf("Failed to create forward packet!")
+					continue
+				}
+				forwardCon.Write(forward)
+			case packets.D_FILE_INFO:
+				log.Printf("Received file information")
+
+				_, ex := db[id]
+				if !ex {
+					log.Printf("User %d not logged in. Cannot process anything without registration and login!", id)
+					return
+				}
+
+				if index := MessageIDExists(header.MessageId, lastMessageId); index > -1 {
+					log.Printf("MessageID has already been seen!")
+					stored := lastMessageId[index]
+					if !AlreadySeen(header.Category, header.Type, stored.Type) {
+						delete(db, id)
+						return
+					} else {
+						// This packet is a duplicate, continue
+						_, _ = reader.ReadSlice('\n')
+						continue
+					}
+				}
+
+				AddMessageId(header.MessageId, header.Category, header.Type, &count, &lastMessageId)
+
+				payload, err := reader.ReadSlice('\n')
+				if err != nil {
+					log.Printf("Failed to read payload of contact info packet!%s\n", err)
+					continue
+				}
+
+				var fileInfo packets.FileInfo
+				fileInfo, err = packets.DeseralizePacket[packets.FileInfo](payload)
+				log.Printf("Got \"%s\" forwarding to \"%d\"\n", fileInfo.FileName, fileInfo.ContactUserId)
+				if err != nil {
+					log.Println("Failed to deserialize text packet")
+					delete(db, id)
+					return
+				}
+
+				forwardCon, ex := db[fileInfo.ContactUserId]
+				if !ex {
+					log.Printf("Contact %d not online", fileInfo.ContactUserId)
+					// database.SaveTextAckToFile(textAck, fmt.Sprint(textAck.ContactUserId)+".json")
+					continue
+				}
+				forward, err := packets.SerializePacket(header, fileInfo)
 				if err != nil {
 					log.Printf("Failed to create forward packet!")
 					continue
