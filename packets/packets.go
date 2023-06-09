@@ -98,6 +98,8 @@ type TextAck struct {
 }
 
 type FileInfo struct {
+	ContactUserId    uint32
+	Timestamp        string
 	FileType         string
 	FileName         string
 	FileLength       uint32
