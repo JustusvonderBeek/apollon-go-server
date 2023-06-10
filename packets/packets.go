@@ -199,6 +199,7 @@ func SerializePacket(header Header, content any) ([]byte, error) {
 		log.Printf("Failed to encode given header to binary")
 		return nil, err
 	}
+	packet := headerBuffer.Bytes()
 	if content != nil {
 		payload, err := json.Marshal(content)
 		if err != nil {
@@ -208,13 +209,12 @@ func SerializePacket(header Header, content any) ([]byte, error) {
 			log.Println("Packet longer than 4 GB are not supported")
 			return nil, errors.New("Packet too long")
 		}
-		packet := append(headerBuffer.Bytes(), payload...)
-		// We need to add the newline for the other end to be able to scan for this
-		packet = append(packet, []byte("\n")...)
-		return packet, nil
+		packet = append(headerBuffer.Bytes(), payload...)
 	}
+	// We need to add the newline for the other end to be able to scan for this
+	packet = append(packet, []byte("\n")...)
 	// log.Printf("Packet: %02x", buffer)
-	return headerBuffer.Bytes(), nil
+	return packet, nil
 }
 
 func DeseralizePacket[T Packet](packet []byte) (T, error) {
