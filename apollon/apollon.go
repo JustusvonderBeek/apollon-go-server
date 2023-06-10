@@ -86,14 +86,14 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 	lastMessageId := make([]StoreMessage, MESSAGE_QUEUE_SIZE)
 	count := 0
 
-	headerBuffer := make([]byte, 10)
+	// headerBuffer := make([]byte, 10)
 
 	for {
-		// read, err := reader.ReadString('\n') // TODO: Switch to this version.
-		read, err := reader.Read(headerBuffer)
+		inBuffer, err := reader.ReadSlice('\n')
+		// read, err := reader.Read(headerBuffer)
 
 		// log.Printf("%T %+v", err, err) // checking err type
-		if read == 0 {
+		if len(inBuffer) == 0 {
 			log.Printf("Connection \"%d\" closed by remote host", id)
 			delete(db, id)
 			return
@@ -104,7 +104,7 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 			continue
 		}
 
-		if read != 10 {
+		if len(inBuffer) < 10 {
 			log.Fatal("The first packet was not enough to fit the header!")
 			// Flush the pipe or wait?
 			continue
@@ -113,9 +113,9 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 		// log.Printf("Raw: %x", headerBuffer)
 		// log.Printf("Raw String: %s", string(headerBuffer))
 
-		// Decode the header information
+		// Decode the header information (first 10 bytes, checked that available)
 		var header packets.Header
-		newReader := bytes.NewReader(headerBuffer)
+		newReader := bytes.NewReader(inBuffer[:10])
 		err = binary.Read(newReader, binary.BigEndian, &header)
 		if err != nil {
 			log.Println("Failed to extract header information from packet")
@@ -125,7 +125,8 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 			return
 		}
 		id = header.UserId
-		log.Printf("Header:\n%s", hex.Dump(headerBuffer))
+		payload := inBuffer[10:]
+		log.Printf("Header:\n%s", hex.Dump(inBuffer[:10]))
 
 		switch header.Category {
 		case packets.CAT_CONTACT:
@@ -139,12 +140,13 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 
 				AddMessageId(header.MessageId, header.Category, header.Type, &count, &lastMessageId)
 
-				// Reading the actual payload
-				payload, err := reader.ReadSlice('\n')
-				if err != nil {
-					log.Printf("Failed to read payload of create packet!\n%s", err)
-					continue
-				}
+				// Already read the whole payload, no more need to do this!
+				// // Reading the actual payload
+				// payload, err := reader.ReadSlice('\n')
+				// if err != nil {
+				// 	log.Printf("Failed to read payload of create packet!\n%s", err)
+				// 	continue
+				// }
 
 				var create packets.Create
 				create, err = packets.DeseralizePacket[packets.Create](payload)
@@ -199,18 +201,18 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					} else {
 						// This packet is a duplicate, continue
 						// But first "clean the pipe"
-						_, _ = reader.ReadSlice('\n')
+						// _, _ = reader.ReadSlice('\n')
 						continue
 					}
 				}
 
 				AddMessageId(header.MessageId, header.Category, header.Type, &count, &lastMessageId)
 
-				payload, err := reader.ReadSlice('\n')
-				if err != nil {
-					log.Printf("Failed to read payload of search packet!%s\n", err)
-					continue
-				}
+				// payload, err := reader.ReadSlice('\n')
+				// if err != nil {
+				// 	log.Printf("Failed to read payload of search packet!%s\n", err)
+				// 	continue
+				// }
 
 				var search packets.Search
 				search, err = packets.DeseralizePacket[packets.Search](payload)
@@ -250,18 +252,18 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 						return
 					} else {
 						// This packet is a duplicate, continue
-						_, _ = reader.ReadSlice('\n')
+						// _, _ = reader.ReadSlice('\n')
 						continue
 					}
 				}
 
 				AddMessageId(header.MessageId, header.Category, header.Type, &count, &lastMessageId)
 
-				payload, err := reader.ReadSlice('\n')
-				if err != nil {
-					log.Printf("Failed to read payload of contact option packet!%s\n", err)
-					continue
-				}
+				// payload, err := reader.ReadSlice('\n')
+				// if err != nil {
+				// 	log.Printf("Failed to read payload of contact option packet!%s\n", err)
+				// 	continue
+				// }
 
 				option, err := packets.DeseralizePacket[packets.ContactOption](payload)
 				if err != nil {
@@ -322,18 +324,19 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 						return
 					} else {
 						// This packet is a duplicate, continue
-						_, _ = reader.ReadSlice('\n')
+						// _, _ = reader.ReadSlice('\n')
 						continue
 					}
 				}
 
 				AddMessageId(header.MessageId, header.Category, header.Type, &count, &lastMessageId)
 
-				payload, err := reader.ReadSlice('\n')
-				if err != nil {
-					log.Printf("Failed to read payload of contact info packet!%s\n", err)
-					continue
-				}
+				// payload, err := reader.ReadSlice('\n')
+				// if err != nil {
+				// 	log.Printf("Failed to read payload of contact info packet!%s\n", err)
+				// 	continue
+				// }
+
 				contact, err := packets.DeseralizePacket[packets.ContactInfo](payload)
 				if err != nil {
 					log.Println("Failed to deserialize contact information packet!")
@@ -387,18 +390,18 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 						return
 					} else {
 						// This packet is a duplicate, continue
-						_, _ = reader.ReadSlice('\n')
+						// _, _ = reader.ReadSlice('\n')
 						continue
 					}
 				}
 
 				AddMessageId(header.MessageId, header.Category, header.Type, &count, &lastMessageId)
 
-				payload, err := reader.ReadSlice('\n')
-				if err != nil {
-					log.Printf("Failed to read payload of contact info packet!%s\n", err)
-					continue
-				}
+				// payload, err := reader.ReadSlice('\n')
+				// if err != nil {
+				// 	log.Printf("Failed to read payload of contact info packet!%s\n", err)
+				// 	continue
+				// }
 
 				var text packets.Text
 				text, err = packets.DeseralizePacket[packets.Text](payload)
@@ -445,11 +448,12 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				// }
 				// AddMessageId(header.MessageId, &count, &lastMessageId)
 
-				payload, err := reader.ReadSlice('\n')
-				if err != nil {
-					log.Printf("Failed to read payload of contact info packet!%s\n", err)
-					continue
-				}
+				// payload, err := reader.ReadSlice('\n')
+				// if err != nil {
+				// 	log.Printf("Failed to read payload of contact info packet!%s\n", err)
+				// 	continue
+				// }
+
 				var textAck packets.TextAck
 				textAck, err = packets.DeseralizePacket[packets.TextAck](payload)
 				if err != nil {
@@ -489,18 +493,18 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 						return
 					} else {
 						// This packet is a duplicate, continue
-						_, _ = reader.ReadSlice('\n')
+						// _, _ = reader.ReadSlice('\n')
 						continue
 					}
 				}
 
 				AddMessageId(header.MessageId, header.Category, header.Type, &count, &lastMessageId)
 
-				payload, err := reader.ReadSlice('\n')
-				if err != nil {
-					log.Printf("Failed to read payload of contact info packet!%s\n", err)
-					continue
-				}
+				// payload, err := reader.ReadSlice('\n')
+				// if err != nil {
+				// 	log.Printf("Failed to read payload of contact info packet!%s\n", err)
+				// 	continue
+				// }
 
 				var fileInfo packets.FileInfo
 				fileInfo, err = packets.DeseralizePacket[packets.FileInfo](payload)
