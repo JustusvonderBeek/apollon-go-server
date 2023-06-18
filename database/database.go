@@ -14,6 +14,7 @@ import (
 
 var database = make(map[uint32]apollontypes.User)
 var databaseFile = "database.json"
+var directory = "./"
 var noWrite = false
 
 func PrintUser(user apollontypes.User) {
@@ -143,6 +144,21 @@ func Clear() {
 func Delete() {
 	database = make(map[uint32]apollontypes.User)
 	os.Create(databaseFile)
+	// Maybe also delete all outstanding message files?
+	dir, err := os.Open(directory)
+	if err != nil {
+		log.Fatal("Failed to find dir!")
+	}
+	fileInfo, err := dir.Readdir(-1)
+	dir.Close()
+	if err != nil {
+		log.Fatal("Failed to get directory information")
+	}
+	for _, file := range fileInfo {
+		if strings.HasSuffix(file.Name(), ".json") {
+			os.Remove("./" + file.Name())
+		}
+	}
 }
 
 func SetDatabaseLocation(location string) {
