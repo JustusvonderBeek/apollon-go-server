@@ -321,6 +321,20 @@ func CreateTextAck(userId uint32, messageId uint32, contactId uint32) (Header, T
 	return header, ack
 }
 
+func CreateContactOption(userId uint32, messageId uint32, contactId uint32, options []Option) (Header, ContactOption) {
+	header := Header{
+		Category:  CAT_CONTACT,
+		Type:      CON_OPTION,
+		UserId:    userId,
+		MessageId: messageId,
+	}
+	option := ContactOption{
+		ContactUserId: contactId,
+		Options:       options,
+	}
+	return header, option
+}
+
 func CreateContactInfoAck(userId uint32, messageId uint32) Header {
 	header := Header{
 		Category:  CAT_CONTACT,
