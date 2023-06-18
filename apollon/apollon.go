@@ -638,7 +638,8 @@ func HandleContactOption(header packets.Header, option packets.ContactOption, co
 			}
 		case "Add":
 			log.Printf("User is adding the contact and sending name: %s", v.Value)
-
+		case "Username":
+			log.Printf("Username: %s", option.Options[0].Value)
 		default:
 			log.Printf("Unknown contact option type \"%s\"", v.Type)
 			return errors.New("unknown contact type")
