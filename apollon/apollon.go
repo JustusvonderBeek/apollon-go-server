@@ -405,7 +405,7 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 
 				var text packets.Text
 				text, err = packets.DeseralizePacket[packets.Text](payload)
-				log.Printf("Got \"%s\" forwarding to \"%d\"\n", text.Message, text.ContactUserId)
+				log.Printf("Got \"%s\" from \"%d\" forwarding to \"%d\"\n", text.Message, header.UserId, text.ContactUserId)
 				if err != nil {
 					log.Println("Failed to deserialize text packet")
 					delete(db, id)
@@ -420,7 +420,7 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					continue
 				}
 				connection.Write(ack)
-				// log.Printf("Wrote textAck back to %d\n", header.UserId)
+				log.Printf("Wrote textAck back to %d\n", header.UserId)
 
 				// Continue with forwarding the text
 				forwardCon, ex := db[text.ContactUserId]
@@ -436,6 +436,7 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					continue
 				}
 				log.Printf("Sending:\n%s", hex.Dump(forward))
+				time.Sleep(100 * time.Millisecond)
 				forwardCon.Write(forward)
 			case packets.D_TEXT_ACK:
 				// TODO: When this is received send it further to acked client so that he can show the "received" flag
