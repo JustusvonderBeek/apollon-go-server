@@ -184,6 +184,7 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					log.Println("Failed to encode answer")
 					continue
 				}
+				log.Printf("Writing create ack back: %s", hex.Dump(encoded))
 				connection.Write(encoded)
 			case packets.CON_SEARCH:
 				_, ex := db[id]
@@ -420,7 +421,7 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					continue
 				}
 				connection.Write(ack)
-				log.Printf("Wrote textAck back to %d\n", header.UserId)
+				log.Printf("Wrote textAck (%s) back to %d\n", hex.Dump(ack), header.UserId)
 
 				// Continue with forwarding the text
 				forwardCon, ex := db[text.ContactUserId]
@@ -436,7 +437,6 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					continue
 				}
 				log.Printf("Sending:\n%s", hex.Dump(forward))
-				time.Sleep(100 * time.Millisecond)
 				forwardCon.Write(forward)
 			case packets.D_TEXT_ACK:
 				// TODO: When this is received send it further to acked client so that he can show the "received" flag
