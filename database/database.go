@@ -253,7 +253,10 @@ func SaveAnyToFile[T packets.Packet](any T, file string) error {
 	return nil
 }
 
-func SaveMessagesToFile(message packets.Text, file string) error {
+func SaveMessagesToFile(message packets.Text, sender uint32, file string) error {
+	// Store the sender address instead of the contact ID
+	// because that is what we don't know afterwards
+	message.ContactUserId = sender
 	return SaveAnyToFile(message, file)
 }
 

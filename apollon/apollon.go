@@ -31,18 +31,26 @@ func HandleOldMessages(id uint32, connection net.Conn) {
 	if err != nil {
 		log.Printf("No messages for client \"%d\" found", id)
 	} else {
+		log.Printf("Sending %d messages from %d", len(messages), id)
+		random := rand.NewSource(time.Now().UnixNano())
+		initMessageId := uint32(random.Int63())
 		for _, v := range messages {
 			// TODO: Fix this, for now this is only to fix the compiliation error
+			log.Print("Sending next packet...")
 			header := packets.Header{
 				Category:  packets.CAT_DATA,
 				Type:      packets.D_TEXT,
-				UserId:    id,
-				MessageId: messages[0].ContactUserId,
+				UserId:    v.ContactUserId,
+				MessageId: initMessageId,
 			}
+			v.ContactUserId = id
+			initMessageId += 1
 			raw, err := packets.SerializePacket(header, v)
 			if err != nil {
+				log.Printf("Failed to serialize packet: %s", err)
 				continue
 			}
+			log.Printf("Sending:\n%s", hex.Dump(raw))
 			connection.Write(raw)
 		}
 	}
@@ -427,7 +435,7 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				forwardCon, ex := db[text.ContactUserId]
 				if !ex {
 					log.Printf("Contact %d not online", text.ContactUserId)
-					database.SaveMessagesToFile(text, fmt.Sprint(text.ContactUserId)+".json")
+					database.SaveMessagesToFile(text, header.UserId, fmt.Sprint(text.ContactUserId)+".json")
 					continue
 				}
 				log.Printf("Text before sending: %v", text)
