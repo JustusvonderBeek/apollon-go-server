@@ -1,3 +1,3 @@
-module Loxias/apollon
+module anzu.cloudsheeptech.com/apollon
 
-go 1.18
+go 1.20

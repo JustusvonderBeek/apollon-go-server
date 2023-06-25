@@ -1,3 +1,3 @@
-module Loxias/server
+module anzu.cloudsheeptech.com/server
 
-go 1.18
+go 1.20

@@ -1,3 +1,3 @@
-module apollon.chat.com/packets
+module anzu.cloudsheeptech.com/packets
 
-go 1.18
+go 1.20

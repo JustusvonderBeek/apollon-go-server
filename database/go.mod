@@ -1,3 +1,3 @@
-module Loxias/database
+module anzu.cloudsheeptech.com/database
 
-go 1.18
+go 1.20
