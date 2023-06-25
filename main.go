@@ -1,12 +1,13 @@
 package main
 
 import (
-	"Loxias/configuration"
-	"Loxias/server"
 	"flag"
 	"io"
 	"log"
 	"os"
+
+	"anzu.cloudsheeptech.com/configuration"
+	"anzu.cloudsheeptech.com/server"
 )
 
 func main() {

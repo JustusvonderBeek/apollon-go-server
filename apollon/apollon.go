@@ -1,7 +1,6 @@
 package apollon
 
 import (
-	"Loxias/database"
 	"bufio"
 	"bytes"
 	"encoding/binary"
@@ -15,7 +14,8 @@ import (
 	"os"
 	"time"
 
-	"apollon.chat.com/packets"
+	"anzu.cloudsheeptech.com/database"
+	"anzu.cloudsheeptech.com/packets"
 )
 
 var MESSAGE_QUEUE_SIZE int = 50
@@ -184,7 +184,7 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					log.Println("Failed to encode answer")
 					continue
 				}
-				log.Printf("Writing create ack back: %s", hex.Dump(encoded))
+				log.Printf("Writing create ack back:\n%s", hex.Dump(encoded))
 				connection.Write(encoded)
 			case packets.CON_SEARCH:
 				_, ex := db[id]

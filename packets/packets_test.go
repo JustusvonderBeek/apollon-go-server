@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	"apollon.chat.com/packets"
+	"anzu.cloudsheeptech.com/packets"
 )
 
 func TestCreationPacket(t *testing.T) {

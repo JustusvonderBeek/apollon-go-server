@@ -1,8 +1,6 @@
 package apollon_test
 
 import (
-	"Loxias/configuration"
-	"Loxias/server"
 	"bytes"
 	"encoding/binary"
 	"errors"
@@ -12,7 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"apollon.chat.com/packets"
+	"anzu.cloudsheeptech.com/configuration"
+	"anzu.cloudsheeptech.com/packets"
+	"anzu.cloudsheeptech.com/server"
 )
 
 func TestMain(m *testing.M) {

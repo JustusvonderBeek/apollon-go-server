@@ -1,15 +1,14 @@
 package database
 
 import (
-	"Loxias/apollontypes"
 	"encoding/json"
 	"errors"
-	"io/ioutil"
 	"log"
 	"os"
 	"strings"
 
-	"apollon.chat.com/packets"
+	"anzu.cloudsheeptech.com/apollontypes"
+	"anzu.cloudsheeptech.com/packets"
 )
 
 var database = make(map[uint32]apollontypes.User)
@@ -32,12 +31,12 @@ func PrintDatabase() {
 func CheckUser(user apollontypes.User) error {
 	if user.Username == "" {
 		log.Println("Cannot store user with empty username!")
-		return errors.New("Empty username")
+		return errors.New("empty username")
 	}
 
 	if user.UserId == 0 {
 		log.Println("Cannot store user with user id 0!")
-		return errors.New("User ID 0")
+		return errors.New("user ID 0")
 	}
 
 	return nil
@@ -223,7 +222,7 @@ func SaveAnyToFile[T packets.Packet](any T, file string) error {
 		return nil
 	}
 	// Append if file exists
-	content, err := ioutil.ReadFile(file)
+	content, err := os.ReadFile(file)
 	var messages []T
 	if err == nil {
 		// File exists, append content
@@ -277,7 +276,7 @@ func SaveContactOption(option packets.ContactOption, file string) error {
 func ReadFromFile(file string) error {
 	Clear()
 	log.Printf("Reading from \"%s\"", file)
-	content, err := ioutil.ReadFile(file)
+	content, err := os.ReadFile(file)
 	if err != nil {
 		log.Println(err)
 		return err
@@ -296,7 +295,7 @@ func ReadFromFile(file string) error {
 
 func ReadMessagesFromFile(file string) ([]packets.Text, error) {
 	log.Printf("Reading messages from \"%s\"", file)
-	content, err := ioutil.ReadFile(file)
+	content, err := os.ReadFile(file)
 	if err != nil {
 		log.Printf("Failed to read messages from \"%s\"", file)
 		return nil, err

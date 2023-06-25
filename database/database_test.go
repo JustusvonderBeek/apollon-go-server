@@ -1,22 +1,21 @@
 package database_test
 
 import (
-	"Loxias/apollontypes"
-	"Loxias/database"
 	"log"
 	"os"
 	"testing"
 
-	"apollon.chat.com/packets"
+	"anzu.cloudsheeptech.com/apollontypes"
+	"anzu.cloudsheeptech.com/database"
+	"anzu.cloudsheeptech.com/packets"
 )
 
 func TestInsertUser(t *testing.T) {
 	log.Println("Testing inserting user")
 
 	user := apollontypes.User{
-		Username:   "test",
-		UserId:     123456789,
-		Connection: nil,
+		Username: "test",
+		UserId:   123456789,
 	}
 
 	err := database.StoreUserInDatabase(user)
@@ -27,9 +26,8 @@ func TestInsertUser(t *testing.T) {
 	}
 
 	user = apollontypes.User{
-		Username:   "",
-		UserId:     12345,
-		Connection: nil,
+		Username: "",
+		UserId:   12345,
 	}
 
 	err = database.StoreUserInDatabase(user)
@@ -62,11 +60,7 @@ func TestInsertUser(t *testing.T) {
 	database.PrintDatabase()
 	// Check for correct insertion with create function
 	client := packets.Create{
-		Category:  packets.CAT_CONTACT,
-		Type:      packets.CON_CREATE,
-		UserId:    1055,
-		MessageId: 100,
-		Username:  "fritz",
+		Username: "fritz",
 	}
 	err = database.StoreInDatabase(client, nil)
 	if err != nil {

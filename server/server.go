@@ -1,13 +1,14 @@
 package server
 
 import (
-	"Loxias/apollon"
-	"Loxias/configuration"
-	"Loxias/database"
 	"crypto/tls"
 	"log"
 	"net"
 	"os"
+
+	"anzu.cloudsheeptech.com/apollon"
+	"anzu.cloudsheeptech.com/configuration"
+	"anzu.cloudsheeptech.com/database"
 )
 
 var listen net.Listener
