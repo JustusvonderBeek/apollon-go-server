@@ -7,4 +7,5 @@ use (
 	./database
 	./apollontypes
 	./configuration
+	./restapi
 )
