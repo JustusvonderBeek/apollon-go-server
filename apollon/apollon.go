@@ -88,6 +88,7 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 	// Init the random number generator
 	rand.Seed(time.Now().UnixNano())
 	reader := bufio.NewReader(connection)
+	largePacketBuffer := make([]byte, 0)
 	var id uint32
 	id = 0
 	// Keeping track of the last n messageIDs for this client
@@ -107,9 +108,21 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 			return
 		}
 
-		if err != nil {
-			log.Println("Failed to read size information from client!")
+		// In case we received larger packets, append to existing data
+		if err == bufio.ErrBufferFull {
+			// log.Printf("Failed to read all data in one go")
+			largePacketBuffer = append(largePacketBuffer, inBuffer...)
 			continue
+		}
+
+		if err != nil {
+			log.Printf("Failed to read size information from client: %s", err)
+			continue
+		}
+
+		if len(largePacketBuffer) > 0 {
+			inBuffer = append(largePacketBuffer, inBuffer...)
+			largePacketBuffer = make([]byte, 0)
 		}
 
 		if len(inBuffer) < 10 {
