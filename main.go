@@ -16,6 +16,7 @@ func main() {
 	addr := flag.String("a", "0.0.0.0", "Listen address")
 	port := flag.String("p", "50000", "Listen port")
 	tlsPort := flag.String("tp", "50001", "TLS listen port")
+	apiPort := flag.String("r", "50002", "Rest API listen port")
 	logfile := flag.String("l", "server.log", "The logfile")
 	clearDb := flag.Bool("e", false, "Clear existing database")
 	tlsCertificate := flag.String("c", "resources/apollon.crt", "The location of the TLS certificate")
@@ -29,6 +30,7 @@ func main() {
 		ListenAddr:         *addr,
 		ListenPort:         *port,
 		SecureListenPort:   *tlsPort,
+		RestApiPort:        *apiPort,
 		Logfile:            *logfile,
 		ClearDatabase:      *clearDb,
 		CertificateFile:    *tlsCertificate,
