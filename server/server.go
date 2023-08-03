@@ -9,6 +9,7 @@ import (
 	"anzu.cloudsheeptech.com/apollon"
 	"anzu.cloudsheeptech.com/configuration"
 	"anzu.cloudsheeptech.com/database"
+	"anzu.cloudsheeptech.com/restapi"
 )
 
 var listen net.Listener
@@ -26,6 +27,7 @@ func Start(config configuration.Config) {
 
 	defaultAddr := config.ListenAddr + ":" + config.ListenPort
 	secureAddr := config.ListenAddr + ":" + config.SecureListenPort
+	// restAddr := config.ListenAddr + ":" + config.RestApiPort
 	running = true
 	var err error
 	if config.Secure {
@@ -58,6 +60,7 @@ func Start(config configuration.Config) {
 	// dbWriteChannel := make(chan apollontypes.User)
 	// go database.UpdateDatabase(dbWriteChannel)
 
+	go restapi.RunRestApi()
 	db := make(map[uint32]net.Conn)
 	// var db database.Database
 	// if err != nil {
