@@ -14,7 +14,7 @@ import (
 
 var listen net.Listener
 var running bool
-var db map[uint32]net.Conn
+var db map[uint32]net.Conn = make(map[uint32]net.Conn)
 
 func Start(config configuration.Config) {
 	log.Println("Starting the server...")
@@ -65,7 +65,6 @@ func Start(config configuration.Config) {
 		go restapi.RunRestApi()
 	}
 
-	db = make(map[uint32]net.Conn)
 	forwardC := make(chan apollon.ForwardMessage, 20)
 	newConnC := make(chan apollon.ConnMessage, 10)
 	onlineC := make(chan apollon.OnlineMessage, 10)
