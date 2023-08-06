@@ -78,7 +78,7 @@ func CheckUserOnline(c chan OnlineMessage, connMap map[uint32]net.Conn) bool {
 	for {
 		m := <-c
 		_, ex := connMap[m.Id]
-		if !ex {
+		if ex {
 			m.Online = false
 		} else {
 			m.Online = true
