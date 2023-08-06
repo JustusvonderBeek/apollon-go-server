@@ -6,6 +6,7 @@ type Config struct {
 	ListenPort         string
 	SecureListenPort   string
 	RestApiPort        string
+	RestApi            bool
 	Logfile            string
 	ClearDatabase      bool
 	CertificateFile    string

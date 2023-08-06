@@ -60,7 +60,10 @@ func Start(config configuration.Config) {
 	// dbWriteChannel := make(chan apollontypes.User)
 	// go database.UpdateDatabase(dbWriteChannel)
 
-	go restapi.RunRestApi()
+	if config.RestApi {
+		go restapi.RunRestApi()
+	}
+
 	db := make(map[uint32]net.Conn)
 	// var db database.Database
 	// if err != nil {
