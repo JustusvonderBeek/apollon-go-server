@@ -6,6 +6,9 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
+
+	"database/sql"
 
 	"anzu.cloudsheeptech.com/apollontypes"
 	"anzu.cloudsheeptech.com/packets"
@@ -15,6 +18,17 @@ var database = make(map[uint32]apollontypes.User)
 var databaseFile = "database.json"
 var directory = "./"
 var noWrite = false
+
+func UseSQL() {
+	db, err := sql.Open("mysql", "anzuchat@localhost:1234@/anzuchat")
+	if err != nil {
+		panic(err)
+	}
+	// See "Important settings" section.
+	db.SetConnMaxLifetime(time.Minute * 3)
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(10)
+}
 
 func PrintUser(user apollontypes.User) {
 	log.Printf("{ Username: %s, UserId: %d, Connection: nil }", user.Username, user.UserId)
