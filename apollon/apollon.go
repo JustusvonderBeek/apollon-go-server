@@ -25,6 +25,22 @@ type StoreMessage struct {
 	Type      int16
 }
 
+type ForwardMessage struct {
+	Packet    []byte
+	ForwardId uint32
+}
+
+type ConnMessage struct {
+	Connection net.Conn
+	Id         uint32
+	Disconnect bool
+}
+
+type OnlineMessage struct {
+	Id     uint32
+	Online bool
+}
+
 func HandleOldMessages(id uint32, connection net.Conn) {
 	log.Printf("Handling messages for \"%d\"", id)
 	messages, err := database.ReadMessagesFromFile(fmt.Sprint(id) + ".json")
@@ -58,6 +74,43 @@ func HandleOldMessages(id uint32, connection net.Conn) {
 	os.Rename(fmt.Sprint(id)+".json", "_"+fmt.Sprint(id)+".json")
 }
 
+func CheckUserOnline(c chan OnlineMessage, connMap map[uint32]net.Conn) bool {
+	for {
+		m := <-c
+		_, ex := connMap[m.Id]
+		if ex {
+			m.Online = false
+		} else {
+			m.Online = true
+		}
+		c <- m
+	}
+}
+
+func ModifyOnlineUsers(c chan ConnMessage, connMap map[uint32]net.Conn) {
+	for {
+		newCon := <-c
+		if !newCon.Disconnect {
+			connMap[newCon.Id] = newCon.Connection
+		} else {
+			delete(connMap, newCon.Id)
+		}
+	}
+}
+
+func ForwardingPackets(c chan ForwardMessage, connMap map[uint32]net.Conn) {
+	for {
+		fwdM := <-c
+		// Check where to forwards this packet to
+		con, ex := connMap[fwdM.ForwardId]
+		if !ex {
+			log.Printf("Contact %d currently not online!", fwdM.ForwardId)
+			continue
+		}
+		con.Write(fwdM.Packet)
+	}
+}
+
 func MessageIDExists(messageId uint32, lastMessageIDs []StoreMessage) int {
 	for i, v := range lastMessageIDs {
 		if v.MessageID == messageId {
@@ -77,7 +130,7 @@ func AddMessageId(messageId uint32, category byte, pType byte, count *int, lastM
 	*count = (*count + 1) % MESSAGE_QUEUE_SIZE
 }
 
-func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
+func HandleClient(connection net.Conn, fwdC chan ForwardMessage, newCC chan ConnMessage, onlineC chan OnlineMessage) {
 	log.Println("Handling client...")
 
 	defer connection.Close()
@@ -106,7 +159,12 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 		// log.Printf("%T %+v", err, err) // checking err type
 		if len(inBuffer) == 0 {
 			log.Printf("Connection \"%d\" closed by remote host", id)
-			delete(db, id)
+			// delete(db, id)
+			newCC <- ConnMessage{
+				Id:         id,
+				Connection: nil,
+				Disconnect: true,
+			}
 			return
 		}
 
@@ -128,7 +186,7 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 		}
 
 		if len(inBuffer) < 10 {
-			log.Fatal("The first packet was not enough to fit the header!")
+			log.Print("The first packet was not enough to fit the header!")
 			// Flush the pipe or wait?
 			continue
 		}
@@ -144,7 +202,11 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 			log.Println("Failed to extract header information from packet")
 			// TODO: Is this rather due to an transmission error or because the client send wrong information? This should NORMALLY only happen if the client is malicous and sends incorrect data as the first part of the packet -> return
 			log.Printf("Set client %d to nil", id)
-			delete(db, id)
+			// delete(db, id)
+			newCC <- ConnMessage{
+				Id:         id,
+				Disconnect: true,
+			}
 			return
 		}
 		id = header.UserId
@@ -157,7 +219,11 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 			case packets.CON_CREATE:
 				if count != 0 {
 					log.Printf("Create packet after connection establishment!")
-					delete(db, id)
+					// delete(db, id)
+					newCC <- ConnMessage{
+						Id:         id,
+						Disconnect: true,
+					}
 					return
 				}
 
@@ -176,7 +242,11 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 
 				if err != nil {
 					// This only happens if incorrect JSON was send
-					delete(db, id)
+					// delete(db, id)
+					newCC <- ConnMessage{
+						Id:         id,
+						Disconnect: true,
+					}
 					return
 				}
 				// Generate new user id
@@ -199,7 +269,12 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					continue
 				}
 				// Logging in the client
-				db[newUserId] = connection
+				// db[newUserId] = connection
+				newCC <- ConnMessage{
+					Id:         newUserId,
+					Connection: connection,
+					Disconnect: false,
+				}
 
 				// Sending back the ID to the client
 				encoded, err := packets.SerializePacket(header, nil)
@@ -210,8 +285,12 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				log.Printf("Writing create ack back:\n%s", hex.Dump(encoded))
 				connection.Write(encoded)
 			case packets.CON_SEARCH:
-				_, ex := db[id]
-				if !ex {
+				onlineC <- OnlineMessage{
+					Id:     id,
+					Online: false,
+				}
+				onl := <-onlineC
+				if onl.Online {
 					log.Printf("User %d not logged in. Cannot process anything without registration and login!", id)
 					return
 				}
@@ -220,7 +299,11 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					log.Printf("MessageID has already been seen!")
 					stored := lastMessageId[index]
 					if !AlreadySeen(header.Category, header.Type, stored.Type) {
-						delete(db, id)
+						// delete(db, id)
+						newCC <- ConnMessage{
+							Id:         id,
+							Disconnect: true,
+						}
 						return
 					} else {
 						// This packet is a duplicate, continue
@@ -242,7 +325,11 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				search, err = packets.DeseralizePacket[packets.Search](payload)
 				if err != nil {
 					log.Println("Failed to deserialize search payload")
-					delete(db, id)
+					// delete(db, id)
+					newCC <- ConnMessage{
+						Id:         id,
+						Disconnect: true,
+					}
 					return
 				}
 				users := database.SearchUsers(search.UserIdentifier)
@@ -259,11 +346,19 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 			case packets.CON_CONTACTS:
 				// Should never be sent to the server
 				log.Println("Received contact list! Should not be received on the server side! Closing connection!")
-				delete(db, id)
+				// delete(db, id)
+				newCC <- ConnMessage{
+					Id:         id,
+					Disconnect: true,
+				}
 				return
 			case packets.CON_OPTION:
-				_, ex := db[id]
-				if !ex {
+				onlineC <- OnlineMessage{
+					Id:     id,
+					Online: false,
+				}
+				onl := <-onlineC
+				if onl.Online {
 					log.Printf("User %d not logged in. Cannot process anything without registration and login!", id)
 					return
 				}
@@ -272,7 +367,11 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					log.Printf("MessageID has already been seen!")
 					stored := lastMessageId[index]
 					if !AlreadySeen(header.Category, header.Type, stored.Type) {
-						delete(db, id)
+						// delete(db, id)
+						newCC <- ConnMessage{
+							Id:         id,
+							Disconnect: true,
+						}
 						return
 					} else {
 						// This packet is a duplicate, continue
@@ -292,20 +391,35 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				option, err := packets.DeseralizePacket[packets.ContactOption](payload)
 				if err != nil {
 					log.Println("Failed to deserialize packet!")
-					delete(db, id)
+					// delete(db, id)
+					newCC <- ConnMessage{
+						Id:         id,
+						Disconnect: true,
+					}
 					return
 				}
 				// log.Println("Received contact option")
-				forwardCon, ex := db[option.ContactUserId]
-				if !ex {
+				// forwardCon, ex := db[option.ContactUserId]
+				// fwdC <- ForwardMessage{
+				// 	Packet: ,
+				// }
+				onlineC <- OnlineMessage{
+					Id:     option.ContactUserId,
+					Online: false,
+				}
+				onl = <-onlineC
+				if onl.Online {
 					// TODO: Save question to file
 					// database.SaveContactOption(option, fmt.Sprint(option.ContactUserId)+".json")
-					forwardCon = nil
 					continue
 				}
-				err = HandleContactOption(header, option, connection, forwardCon)
+				err = HandleContactOption(header, option, connection, fwdC)
 				if err != nil {
-					delete(db, id)
+					// delete(db, id)
+					newCC <- ConnMessage{
+						Id:         id,
+						Disconnect: true,
+					}
 					return
 				}
 			case packets.CON_LOGIN:
@@ -313,7 +427,11 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				log.Printf("Login from user %d", header.UserId)
 				if header.UserId == 0 {
 					log.Printf("Unknown user %d! Killing connection!", header.UserId)
-					delete(db, header.UserId)
+					// delete(db, header.UserId)
+					newCC <- ConnMessage{
+						Id:         header.UserId,
+						Disconnect: true,
+					}
 					return
 				}
 
@@ -327,15 +445,28 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				_, err := database.SearchUserId(header.UserId)
 				if err != nil {
 					log.Printf("Failed to find user with ID %d! Killing connection", header.UserId)
-					delete(db, header.UserId)
+					// delete(db, header.UserId)
+					newCC <- ConnMessage{
+						Id:         header.UserId,
+						Disconnect: true,
+					}
 					return
 				}
 				// Proceed to handle user otherwise
-				db[id] = connection
+				// db[id] = connection
+				newCC <- ConnMessage{
+					Id:         id,
+					Connection: connection,
+					Disconnect: false,
+				}
 				go HandleOldMessages(id, connection)
 			case packets.CON_CONTACT_INFO:
-				_, ex := db[id]
-				if !ex {
+				onlineC <- OnlineMessage{
+					Id:     id,
+					Online: false,
+				}
+				onl := <-onlineC
+				if onl.Online {
 					log.Printf("User %d not logged in. Cannot process anything without registration and login!", id)
 					return
 				}
@@ -344,7 +475,11 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					log.Printf("MessageID has already been seen!")
 					stored := lastMessageId[index]
 					if !AlreadySeen(header.Category, header.Type, stored.Type) {
-						delete(db, id)
+						// delete(db, id)
+						newCC <- ConnMessage{
+							Id:         id,
+							Disconnect: true,
+						}
 						return
 					} else {
 						// This packet is a duplicate, continue
@@ -364,7 +499,11 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				contact, err := packets.DeseralizePacket[packets.ContactInfo](payload)
 				if err != nil {
 					log.Println("Failed to deserialize contact information packet!")
-					delete(db, id)
+					// delete(db, id)
+					newCC <- ConnMessage{
+						Id:         id,
+						Disconnect: true,
+					}
 					return
 				}
 				// log.Printf("Got contact information: %s", string(contentBuf))
@@ -383,25 +522,37 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					continue
 				}
 				for _, v := range contact.ContactIds {
-					forwardCon, ex := db[v]
-					if !ex {
-						log.Printf("Contact %du not online\n", v)
-						// database.SaveContactInfoToFile(contact, fmt.Sprint(v)+".json")
-						continue
+					fwdC <- ForwardMessage{
+						Packet:    forward,
+						ForwardId: v,
 					}
-					forwardCon.Write(forward)
+					// forwardCon, ex := db[v]
+					// if !ex {
+					// 	log.Printf("Contact %du not online\n", v)
+					// 	// database.SaveContactInfoToFile(contact, fmt.Sprint(v)+".json")
+					// 	continue
+					// }
+					// forwardCon.Write(forward)
 					log.Printf("Forwarded contact info to %du\n", v)
 				}
 			default:
 				log.Printf("Incorrect packet type: %d\n", header.Type)
-				delete(db, id)
+				// delete(db, id)
+				newCC <- ConnMessage{
+					Id:         id,
+					Disconnect: true,
+				}
 				return
 			}
 		case packets.CAT_DATA:
 			switch header.Type {
 			case packets.D_TEXT:
-				_, ex := db[id]
-				if !ex {
+				onlineC <- OnlineMessage{
+					Id:     id,
+					Online: false,
+				}
+				onl := <-onlineC
+				if onl.Online {
 					log.Printf("User %d not logged in. Cannot process anything without registration and login!", id)
 					return
 				}
@@ -410,7 +561,11 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					log.Printf("MessageID has already been seen!")
 					stored := lastMessageId[index]
 					if !AlreadySeen(header.Category, header.Type, stored.Type) {
-						delete(db, id)
+						// delete(db, id)
+						newCC <- ConnMessage{
+							Id:         id,
+							Disconnect: true,
+						}
 						return
 					} else {
 						// This packet is a duplicate, continue
@@ -432,7 +587,11 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				log.Printf("Got \"%s\" from \"%d\" forwarding to \"%d\"\n", text.Message, header.UserId, text.ContactUserId)
 				if err != nil {
 					log.Println("Failed to deserialize text packet")
-					delete(db, id)
+					// delete(db, id)
+					newCC <- ConnMessage{
+						Id:         id,
+						Disconnect: true,
+					}
 					return
 				}
 
@@ -447,8 +606,12 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				log.Printf("Wrote textAck (%s) back to %d\n", hex.Dump(ack), header.UserId)
 
 				// Continue with forwarding the text
-				forwardCon, ex := db[text.ContactUserId]
-				if !ex {
+				onlineC <- OnlineMessage{
+					Id:     text.ContactUserId,
+					Online: false,
+				}
+				onl = <-onlineC
+				if onl.Online {
 					log.Printf("Contact %d not online", text.ContactUserId)
 					database.SaveMessagesToFile(text, header.UserId, fmt.Sprint(text.ContactUserId)+".json")
 					continue
@@ -460,7 +623,11 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					continue
 				}
 				log.Printf("Sending:\n%s", hex.Dump(forward))
-				forwardCon.Write(forward)
+				// forwardCon.Write(forward)
+				fwdC <- ForwardMessage{
+					Packet:    forward,
+					ForwardId: text.ContactUserId,
+				}
 			case packets.D_TEXT_ACK:
 				// TODO: When this is received send it further to acked client so that he can show the "received" flag
 
@@ -488,8 +655,12 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				}
 
 				// Lookup the contacted user and forward
-				forwardCon, ex := db[textAck.ContactUserId]
-				if !ex {
+				onlineC <- OnlineMessage{
+					Id:     textAck.ContactUserId,
+					Online: false,
+				}
+				onl := <-onlineC
+				if onl.Online {
 					log.Printf("Contact %d not online", textAck.ContactUserId)
 					// database.SaveTextAckToFile(textAck, fmt.Sprint(textAck.ContactUserId)+".json")
 					continue
@@ -499,12 +670,20 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					log.Printf("Failed to create forward packet!")
 					continue
 				}
-				forwardCon.Write(forward)
+				// forwardCon.Write(forward)
+				fwdC <- ForwardMessage{
+					Packet:    forward,
+					ForwardId: textAck.ContactUserId,
+				}
 			case packets.D_FILE_INFO:
 				log.Printf("Received file information")
 
-				_, ex := db[id]
-				if !ex {
+				onlineC <- OnlineMessage{
+					Id:     id,
+					Online: false,
+				}
+				onl := <-onlineC
+				if onl.Online {
 					log.Printf("User %d not logged in. Cannot process anything without registration and login!", id)
 					return
 				}
@@ -513,7 +692,11 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					log.Printf("MessageID has already been seen!")
 					stored := lastMessageId[index]
 					if !AlreadySeen(header.Category, header.Type, stored.Type) {
-						delete(db, id)
+						// delete(db, id)
+						newCC <- ConnMessage{
+							Id:         id,
+							Disconnect: true,
+						}
 						return
 					} else {
 						// This packet is a duplicate, continue
@@ -535,12 +718,20 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 				log.Printf("Got \"%s\" forwarding to \"%d\"\n", fileInfo.FileName, fileInfo.ContactUserId)
 				if err != nil {
 					log.Println("Failed to deserialize text packet")
-					delete(db, id)
+					// delete(db, id)
+					newCC <- ConnMessage{
+						Id:         id,
+						Disconnect: true,
+					}
 					return
 				}
 
-				forwardCon, ex := db[fileInfo.ContactUserId]
-				if !ex {
+				onlineC <- OnlineMessage{
+					Id:     fileInfo.ContactUserId,
+					Online: false,
+				}
+				onl = <-onlineC
+				if onl.Online {
 					log.Printf("Contact %d not online", fileInfo.ContactUserId)
 					// database.SaveTextAckToFile(textAck, fmt.Sprint(textAck.ContactUserId)+".json")
 					continue
@@ -550,21 +741,33 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 					log.Printf("Failed to create forward packet!")
 					continue
 				}
-				forwardCon.Write(forward)
+				// forwardCon.Write(forward)
+				fwdC <- ForwardMessage{
+					Packet:    forward,
+					ForwardId: fileInfo.ContactUserId,
+				}
 			default:
 				log.Printf("Incorrect packet type %d", header.Type)
-				delete(db, id)
+				// delete(db, id)
+				newCC <- ConnMessage{
+					Id:         id,
+					Disconnect: true,
+				}
 				return
 			}
 		default:
 			log.Printf("Incorrect packet category: %d", header.Category)
-			delete(db, id)
+			// delete(db, id)
+			newCC <- ConnMessage{
+				Id:         id,
+				Disconnect: true,
+			}
 			return
 		}
 	}
 }
 
-func HandleContactOption(header packets.Header, option packets.ContactOption, connection net.Conn, forwardCon net.Conn) error {
+func HandleContactOption(header packets.Header, option packets.ContactOption, connection net.Conn, fwdC chan ForwardMessage) error {
 	for _, v := range option.Options {
 		log.Printf("Option: {%s, %s}", v.Type, v.Value)
 		switch v.Type {
@@ -579,13 +782,14 @@ func HandleContactOption(header packets.Header, option packets.ContactOption, co
 				}
 
 				// TODO: Add forwarding the request to be able to automatically add the user into the list
-				if forwardCon != nil {
-					forwardPacket, err := packets.SerializePacket(header, option)
-					if err != nil {
-						log.Print("Failed to create Option packet to forward!")
-						break
-					}
-					forwardCon.Write(forwardPacket)
+				forwardPacket, err := packets.SerializePacket(header, option)
+				if err != nil {
+					log.Print("Failed to create Option packet to forward!")
+					break
+				}
+				fwdC <- ForwardMessage{
+					Packet:    forwardPacket,
+					ForwardId: option.ContactUserId,
 				}
 				log.Print("The questioned client is not online!")
 

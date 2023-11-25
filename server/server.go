@@ -14,6 +14,7 @@ import (
 
 var listen net.Listener
 var running bool
+var db map[uint32]net.Conn = make(map[uint32]net.Conn)
 
 func Start(config configuration.Config) {
 	log.Println("Starting the server...")
@@ -64,7 +65,13 @@ func Start(config configuration.Config) {
 		go restapi.RunRestApi()
 	}
 
-	db := make(map[uint32]net.Conn)
+	forwardC := make(chan apollon.ForwardMessage, 20)
+	newConnC := make(chan apollon.ConnMessage, 10)
+	onlineC := make(chan apollon.OnlineMessage, 10)
+	go apollon.ModifyOnlineUsers(newConnC, db)
+	go apollon.ForwardingPackets(forwardC, db)
+	go apollon.CheckUserOnline(onlineC, db)
+
 	// var db database.Database
 	// if err != nil {
 	// 	log.Printf("%s", err)
@@ -87,7 +94,7 @@ func Start(config configuration.Config) {
 
 		log.Printf("Client from %s accepted", conn.RemoteAddr().String())
 		// This method is generic enough (only one param, the net.Conn) so that many different functionalites can be used and implemented with this simple code snippet
-		go apollon.HandleClient(conn, db)
+		go apollon.HandleClient(conn, forwardC, newConnC, onlineC)
 
 		if !running {
 			break
