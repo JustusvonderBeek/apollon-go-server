@@ -86,7 +86,7 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 	// go HandleIncoming(connection, incoming)
 
 	// Init the random number generator
-	rand.Seed(time.Now().UnixNano())
+	rand.New(rand.NewSource(time.Now().UnixNano()))
 	reader := bufio.NewReader(connection)
 	largePacketBuffer := make([]byte, 0)
 	var id uint32
@@ -98,6 +98,8 @@ func HandleClient(connection net.Conn, db map[uint32]net.Conn) {
 	// headerBuffer := make([]byte, 10)
 
 	for {
+		// Blocking call... but then how to handle data that should be forwarded?
+		// Idea: own thread that is only responsible for forwarding data
 		inBuffer, err := reader.ReadSlice('\n')
 		// read, err := reader.Read(headerBuffer)
 
