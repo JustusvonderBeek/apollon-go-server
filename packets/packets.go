@@ -88,7 +88,7 @@ type ContactInfo struct {
 
 type Text struct {
 	ContactUserId uint32
-	Timestamp     string
+	Timestamp     uint64
 	Message       string
 }
 
@@ -99,7 +99,7 @@ type TextAck struct {
 
 type FileInfo struct {
 	ContactUserId    uint32
-	Timestamp        string
+	Timestamp        uint64
 	FileType         string
 	FileName         string
 	FileLength       uint32
@@ -299,9 +299,10 @@ func CreateText(userId uint32, messageId uint32, contactId uint32, text string) 
 		UserId:    userId,
 		MessageId: messageId,
 	}
+	ts := uint64(time.Now().UnixMilli())
 	textStruct := Text{
 		ContactUserId: contactId,
-		Timestamp:     time.Now().Format(time.RFC3339),
+		Timestamp:     ts,
 		Message:       text,
 	}
 	return header, textStruct
